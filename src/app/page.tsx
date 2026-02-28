@@ -70,7 +70,7 @@ async function loadProfilesFromDB() {
     await supabase.from("profiles").insert([{ name: "Default" }]);
     return ["Default"];
   }
-  return data.map(r => r.name);
+  return data.map((r: any) => r.name);
 }
 
 async function saveProfilesToDB(profiles: string[]) {
@@ -89,7 +89,7 @@ async function saveProfilesToDB(profiles: string[]) {
 }
 
 
-async function loadTasksFromDB(profile) {
+async function loadTasksFromDB(profile: string): Promise<any[]> {
   if (!supabase) return [];
   try {
     const { data, error } = await supabase.from("tasks").select("id, content").eq("profile", profile);
@@ -98,7 +98,7 @@ async function loadTasksFromDB(profile) {
       return [];
     }
     // data[i].content is a JSON object if stored as jsonb
-    return (data || []).map(r => (typeof r.content === "string" ? safeParse(r.content) || null : r.content)).filter(Boolean);
+    return (data || []).map((r: any) => (typeof r.content === "string" ? safeParse(r.content) || null : r.content)).filter(Boolean);
   } catch (e) {
     console.error("loadTasksFromDB exception", e);
     return [];
@@ -145,26 +145,36 @@ async function cleanupDeletedTasks(profile: string, tasks: any[]) {
 
 
 // -------------------- TaskNode component (unchanged behavior) --------------------
-function TaskNode({ task, onChange, onDelete, level = 0 }) {
+function TaskNode({
+  task,
+  onChange,
+  onDelete,
+  level = 0,
+}: {
+  task: any;
+  onChange: (t: any) => void;
+  onDelete?: (id: string) => void;
+  level?: number;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [childTitle, setChildTitle] = useState("");
   const [comment, setComment] = useState("");
-  const [openChildren, setOpenChildren] = useState({});
+  const [openChildren, setOpenChildren] = useState<Record<string, boolean>>({});
   const [tagInput, setTagInput] = useState("");
 
-  const updateSelf = updates => onChange({ ...task, ...updates });
+  const updateSelf = (updates: any) => onChange({ ...task, ...updates });
 
-  const updateChild = updatedChild => {
+  const updateChild = (updatedChild: any) => {
     updateSelf({
-      subtasks: (task.subtasks || []).map(st =>
+      subtasks: (task.subtasks || []).map((st: any) =>
         st.id === updatedChild.id ? updatedChild : st
       ),
     });
   };
 
-  const deleteChild = id => {
+  const deleteChild = (id: any) => {
     updateSelf({
-      subtasks: (task.subtasks || []).filter(st => st.id !== id),
+      subtasks: (task.subtasks || []).filter((st: any) => st.id !== id),
     });
   };
 
@@ -194,7 +204,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }) {
     setComment("");
   };
 
-  const toggleChildOpen = id => setOpenChildren(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleChildOpen = (id: any) => setOpenChildren(prev => ({ ...prev, [id]: !prev[id] }));
 
   const addTag = () => {
     const parts = (tagInput || "").split(",").map(s => s.trim()).filter(Boolean);
@@ -204,7 +214,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }) {
     setTagInput("");
   };
 
-  const removeTag = tag => updateSelf({ tags: (task.tags || []).filter(t => t !== tag) });
+  const removeTag = (tag: any) => updateSelf({ tags: (task.tags || []).filter((t: any) => t !== tag) });
 
   return (
     <div className="space-y-3" style={{ marginLeft: level * 20 }}>
@@ -226,7 +236,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }) {
               </div>
               {task.date && <div className="text-xs text-slate-400">{task.date}</div>}
               <div className="mt-2 flex gap-2 flex-wrap">
-                {(task.tags || []).map(tag => (
+                {(task.tags || []).map((tag: string) => (
                   <div key={tag} className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded flex items-center gap-2">
                     <span>{tag}</span>
                     <button onClick={e => { e.stopPropagation(); removeTag(tag); }} className="text-xs text-red-400">✕</button>
@@ -258,7 +268,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }) {
 
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-slate-200">Subtasks</div>
-                {(task.subtasks || []).map(st => (
+                {(task.subtasks || []).map((st: any) => (
                   <div key={st.id} className="bg-slate-800 border border-slate-700 rounded-lg p-2 mb-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3">
@@ -292,7 +302,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }) {
 
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-slate-200">Comments</div>
-                {(task.comments || []).map((c, i) => (<div key={i} className="text-sm bg-slate-700 p-2 rounded text-slate-200">{c}</div>))}
+                {(task.comments || []).map((c: string, i: number) => (<div key={i} className="text-sm bg-slate-700 p-2 rounded text-slate-200">{c}</div>))}
                 <div className="flex gap-2">
                   <Input placeholder="Add remark" value={comment} onChange={e => setComment(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
                   <Button className="bg-emerald-600 hover:bg-emerald-500" onClick={addComment}>Add</Button>
@@ -315,22 +325,25 @@ function TaskNode({ task, onChange, onDelete, level = 0 }) {
 }
 
 // -------------------- helpers for tags & traversal (unchanged) --------------------
-function collectAllTags(tasks) {
-  const set = new Set();
-  function walk(list) {
-    (list || []).forEach(t => {
-      (t.tags || []).forEach(tag => set.add(tag));
+function collectAllTags(tasks: any[]): string[] {
+  const set = new Set<string>();
+
+  function walk(list: any[]) {
+    (list || []).forEach((t: any) => {
+      (t.tags || []).forEach((tag: string) => set.add(tag));
       if (t.subtasks) walk(t.subtasks);
     });
   }
+
   walk(tasks);
   return Array.from(set).sort();
 }
 
-function collectTasksWithTag(tasks, tag) {
-  const result = [];
-  function walk(list, parentPath = "") {
-    (list || []).forEach(t => {
+
+function collectTasksWithTag(tasks: any[], tag: string): any[] {
+  const result: any[] = [];
+  function walk(list: any[], parentPath: string = "") {
+    (list || []).forEach((t: any) => {
       const has = (t.tags || []).includes(tag);
       if (has) result.push(t);
       if (t.subtasks) walk(t.subtasks, parentPath ? `${parentPath} > ${t.title}` : t.title);
@@ -348,13 +361,13 @@ export default function TodoApp() {
     return "Default";
   });
   const [newProfileName, setNewProfileName] = useState('');
-  const [tasks, setTasks] = useState([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [priority, setPriority] = useState("2");
   const [tagInput, setTagInput] = useState("");
   const [activeTab, setActiveTab] = useState("calendar");
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [findQuery, setFindQuery] = useState("");
   const [findPriority, setFindPriority] = useState("all");
   const [findTag, setFindTag] = useState("all");
@@ -362,6 +375,7 @@ export default function TodoApp() {
   const [findDateFrom, setFindDateFrom] = useState("");
   const [findDateTo, setFindDateTo] = useState("");
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [openChildren, setOpenChildren] = useState<Record<string, boolean>>({});
 
   // Load profiles once from DB on mount
   useEffect(() => {
@@ -428,7 +442,7 @@ useEffect(() => {
     setNewProfileName('');
   };
 
-  const deleteProfile = name => {
+  const deleteProfile = (name: string) => {
     if (profiles.length === 1) return;
     const updated = profiles.filter(p => p !== name);
     setProfiles(updated);
@@ -456,8 +470,16 @@ useEffect(() => {
     setTagInput("");
   };
 
-  const updateTask = updated => setTasks(prev => prev.map(t => (t.id === updated.id ? updated : t)));
-  const deleteTask = id => setTasks(prev => prev.filter(t => t.id !== id));
+  const updateTask = (updated: any) =>
+  setTasks((prev: any[]) =>
+    prev.map(t => (t.id === updated.id ? updated : t))
+  );
+
+  const deleteTask = (id: string) =>
+  setTasks((prev: any[]) =>
+    prev.filter(t => t.id !== id)
+  );
+
 
   const filteredTasks = useMemo(() => {
     let result = Array.isArray(tasks) ? tasks : [];
@@ -466,8 +488,8 @@ useEffect(() => {
   }, [tasks, selectedDate]);
 
   const tasksByDate = useMemo(() => {
-    const map = {};
-    tasks.forEach(t => {
+    const map: Record<string, any[]> = {};
+    tasks.forEach((t: any) => {
       if (!map[t.date]) map[t.date] = [];
       map[t.date].push(t);
     });
@@ -494,7 +516,7 @@ useEffect(() => {
     const mostProductive = byDate.slice().sort((a,b)=>b.count-a.count)[0]?.date || null;
     const leastProductive = byDate.slice().sort((a,b)=>a.count-b.count)[0]?.date || null;
     const tags = collectAllTags(tasks);
-    const byTag = tags.map(tag => {
+    const byTag = tags.map((tag: string) => {
       const tagged = collectTasksWithTag(tasks, tag);
       const count = tagged.length;
       const completedCount = tagged.filter(t => t.completed).length;
@@ -504,13 +526,13 @@ useEffect(() => {
     return { total, completed, avgProgress, byPriority, byDate, overdue, highPriority, mostProductive, leastProductive, byTag };
   }, [tasks, tasksByDate, today]);
 
-  const tabClass = active => `px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${active ? "bg-blue-500 text-white shadow-lg scale-105" : "bg-gray-700 text-gray-200 hover:bg-gray-600"}`;
+  const tabClass = (active: boolean) => `px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${active ? "bg-blue-500 text-white shadow-lg scale-105" : "bg-gray-700 text-gray-200 hover:bg-gray-600"}`;
 
   const allTags = useMemo(() => collectAllTags(tasks), [tasks]);
 
   const flattenedTasks = useMemo(() => {
-    const out = [];
-    function walk(list) {
+    const out: any[] = [];
+    function walk(list: any[]) {
       (list || []).forEach(t => {
         out.push(t);
         if (t.subtasks) walk(t.subtasks);
@@ -530,22 +552,36 @@ useEffect(() => {
       if (findDateFrom && t.date && t.date < findDateFrom) return false;
       if (findDateTo && t.date && t.date > findDateTo) return false;
       if (q) {
-        return (t.title || "").toLowerCase().includes(q) || (t.comments || []).some(c => c.toLowerCase().includes(q));
+        return (t.title || "").toLowerCase().includes(q) || (t.comments || []).some((c: string) => c.toLowerCase().includes(q));
       }
       return true;
     });
   }, [flattenedTasks, findQuery, findPriority, findTag, findCompleted, findDateFrom, findDateTo]);
 
   const byDateDetailed = useMemo(() => {
-    const map = {};
-    (analyticsData.byDate || []).forEach(d => {
-      const tasksForDate = tasksByDate[d.date] || [];
-      const completedCount = tasksForDate.filter(t => t.completed).length;
-      const avg = tasksForDate.length ? Math.round(tasksForDate.reduce((a,b)=>a+(b.progress||0),0)/tasksForDate.length) : 0;
-      map[d.date] = { date: d.date, count: d.count, completedCount, avgProgress: avg, completedPct: tasksForDate.length ? Math.round((completedCount / tasksForDate.length) * 100) : 0 };
-    });
-    return Object.values(map).sort((a,b) => a.date.localeCompare(b.date));
-  }, [analyticsData.byDate, tasksByDate]);
+      const map: Record<string, any> = {};
+
+      (analyticsData.byDate || []).forEach(d => {
+        const tasksForDate = tasksByDate[d.date] || [];
+        const completedCount = tasksForDate.filter(t => t.completed).length;
+        const avg = tasksForDate.length
+          ? Math.round(tasksForDate.reduce((a, b) => a + (b.progress || 0), 0) / tasksForDate.length)
+          : 0;
+
+        map[d.date] = {
+          date: d.date,
+          count: d.count,
+          completedCount,
+          avgProgress: avg,
+          completedPct: tasksForDate.length
+            ? Math.round((completedCount / tasksForDate.length) * 100)
+            : 0,
+        };
+      });
+
+      return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
+    }, [analyticsData.byDate, tasksByDate]);
+
 
   const byTagDetailed = useMemo(() => (analyticsData.byTag || []).map(t => ({ ...t, remaining: t.count - t.completedCount })), [analyticsData.byTag]);
 
@@ -657,7 +693,7 @@ useEffect(() => {
               <div className="text-lg font-semibold">Tags</div>
               <div className="grid md:grid-cols-3 gap-4">
                 {allTags.length === 0 && <div className="text-slate-400">No tags yet</div>}
-                {allTags.map(tag => (
+                {allTags.map((tag: string) => (
                   <div key={tag} className="bg-slate-700 p-3 rounded">
                     <div className="flex items-center justify-between">
                       <div className="font-medium text-slate-100">{tag}</div>
@@ -790,16 +826,28 @@ useEffect(() => {
               <div className="bg-slate-700 p-4 rounded-lg">
                 <div className="text-lg font-semibold mb-2">Priority Breakdown</div>
                 <div style={{ height: 360 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={priorityWithPct} dataKey="value" nameKey="name" outerRadius={120} innerRadius={60} labelLine={false} label={entry => `${entry.name.split(' ')[1] || entry.name} (${entry.pct}%)`}>
-                        {priorityWithPct.map((entry, index) => (
-                          <Cell key={index} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => `${value} tasks`} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <ResponsiveContainer width="100%" height={260}>
+                      <PieChart>
+                        <Pie
+                          data={priorityWithPct}
+                          dataKey="value"
+                          nameKey="name"
+                          outerRadius={120}
+                          innerRadius={60}
+                          labelLine={false}
+                          label={({ name = "", pct = 0 }: any) =>
+                            `${name.split(" ")[1] || name} (${pct}%)`
+                          }
+                        >
+                          {priorityWithPct.map((p, i) => (
+                            <Cell key={i} fill={p.color} />
+                          ))}
+                        </Pie>
+
+                        <Tooltip formatter={(value) => `${value} tasks`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
                   {priorityWithPct.map((p, i) => (
@@ -822,7 +870,7 @@ useEffect(() => {
                           <div className="text-sm text-slate-200">{t.title}</div>
                           <div className="text-xs text-slate-400">{t.date}</div>
                         </div>
-                        <div style={{ width: 10, height: 10, background: priorityColor[t.priority] || '#64748b', borderRadius: 4 }} />
+                        <div style={{ width: 10, height: 10, background: priorityColor[t.priority as keyof typeof priorityColor] || '#64748b', borderRadius: 4 }} />
                       </div>
                     ))}
                     {tasks.filter(t => !t.completed && t.date && t.date >= today).length === 0 && <div className="text-sm text-slate-400">No upcoming tasks</div>}
