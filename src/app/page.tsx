@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
 import { createClient } from "@supabase/supabase-js";
 
+
 const priorities = [
   { value: "4", label: "🚨 Emergency" },
   { value: "3", label: "⚠️ High" },
@@ -22,16 +23,21 @@ const priorityColor = {
   "1": "#22c55e",
 };
 
-const safeParse = v => {
-  try { return JSON.parse(v); } catch { return null; }
+const safeParse = (v: string | null) => {
+  try {
+    return v ? JSON.parse(v) : null;
+  } catch {
+    return null;
+  }
 };
+
 
 const uid = () =>
   typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
     : Math.random().toString(36).substring(2) + Date.now().toString(36);
 
-const toISODate = d => {
+const toISODate = (d: string | number | Date) => {
   const date = new Date(d);
   const offset = date.getTimezoneOffset();
   const local = new Date(date.getTime() - offset * 60000);
@@ -41,7 +47,16 @@ const toISODate = d => {
 // -------------------- Supabase client + helpers --------------------
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.warn("Supabase env vars missing");
+}
+
+const supabase =
+  SUPABASE_URL && SUPABASE_ANON_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+
 
 async function loadProfilesFromDB() {
   if (!supabase) return ["Default"];
@@ -58,7 +73,7 @@ async function loadProfilesFromDB() {
   return data.map(r => r.name);
 }
 
-async function saveProfilesToDB(profiles) {
+async function saveProfilesToDB(profiles: string[]) {
   if (!supabase) return;
 
   try {
@@ -90,7 +105,7 @@ async function loadTasksFromDB(profile) {
   }
 }
 
-async function saveTasksToDB(profile, tasks) {
+async function saveTasksToDB(profile: string, tasks: any[]) {
   if (!supabase) return;
 
   try {
@@ -110,10 +125,14 @@ async function saveTasksToDB(profile, tasks) {
   }
 }
 
-async function cleanupDeletedTasks(profile, tasks) {
+async function cleanupDeletedTasks(profile: string, tasks: any[]) {
   if (!supabase) return;
 
   const ids = tasks.map(t => t.id);
+  if (ids.length === 0) {
+    await supabase.from("tasks").delete().eq("profile", profile);
+    return;
+  }
 
   await supabase
     .from("tasks")
@@ -121,6 +140,7 @@ async function cleanupDeletedTasks(profile, tasks) {
     .eq("profile", profile)
     .not("id", "in", `(${ids.join(",")})`);
 }
+
 
 
 
