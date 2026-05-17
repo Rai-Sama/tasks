@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
 import { createClient } from "@supabase/supabase-js";
 
-
 const priorities = [
   { value: "4", label: "🚨 Emergency" },
   { value: "3", label: "⚠️ High" },
@@ -30,7 +29,6 @@ const safeParse = (v: string | null) => {
     return null;
   }
 };
-
 
 const uid = () =>
   typeof crypto !== "undefined" && crypto.randomUUID
@@ -57,7 +55,6 @@ const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
-
 async function loadProfilesFromDB() {
   if (!supabase) return ["Default"];
   const { data, error } = await supabase.from("profiles").select("name").order("created_at", { ascending: true });
@@ -66,7 +63,6 @@ async function loadProfilesFromDB() {
     return ["Default"];
   }
   if (!data || data.length === 0) {
-    // create default profile
     await supabase.from("profiles").insert([{ name: "Default" }]);
     return ["Default"];
   }
@@ -75,39 +71,27 @@ async function loadProfilesFromDB() {
 
 async function saveProfilesToDB(profiles: string[]) {
   if (!supabase) return;
-
   try {
     const rows = profiles.map(name => ({ name }));
-
-    await supabase
-      .from("profiles")
-      .upsert(rows, { onConflict: "name" });
-
+    await supabase.from("profiles").upsert(rows, { onConflict: "name" });
   } catch (e) {
     console.error("saveProfilesToDB error", e);
   }
 }
 
-
 async function loadTasksFromDB(profile: string): Promise<any[]> {
   if (!supabase) return [];
   try {
     const { data, error } = await supabase.from("tasks").select("id, content").eq("profile", profile);
-    if (error) {
-      console.error("loadTasksFromDB error", error);
-      return [];
-    }
-    // data[i].content is a JSON object if stored as jsonb
+    if (error) return [];
     return (data || []).map((r: any) => (typeof r.content === "string" ? safeParse(r.content) || null : r.content)).filter(Boolean);
   } catch (e) {
-    console.error("loadTasksFromDB exception", e);
     return [];
   }
 }
 
 async function saveTasksToDB(profile: string, tasks: any[]) {
   if (!supabase) return;
-
   try {
     const rows = tasks.map(t => ({
       id: t.id,
@@ -115,11 +99,7 @@ async function saveTasksToDB(profile: string, tasks: any[]) {
       content: t,
       updated_at: new Date().toISOString(),
     }));
-
-    await supabase
-      .from("tasks")
-      .upsert(rows, { onConflict: "id" });
-
+    await supabase.from("tasks").upsert(rows, { onConflict: "id" });
   } catch (e) {
     console.error("saveTasksToDB error", e);
   }
@@ -127,13 +107,11 @@ async function saveTasksToDB(profile: string, tasks: any[]) {
 
 async function cleanupDeletedTasks(profile: string, tasks: any[]) {
   if (!supabase) return;
-
   const ids = tasks.map(t => t.id);
   if (ids.length === 0) {
     await supabase.from("tasks").delete().eq("profile", profile);
     return;
   }
-
   await supabase
     .from("tasks")
     .delete()
@@ -141,21 +119,50 @@ async function cleanupDeletedTasks(profile: string, tasks: any[]) {
     .not("id", "in", `(${ids.join(",")})`);
 }
 
+// -------------------- Recurrence Engine --------------------
+function getNextOccurrence(dateStr: string, recurrence: any): string | null {
+  if (!recurrence || recurrence.frequency === 'none') return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
 
+  const interval = recurrence.interval || 1;
 
+  if (recurrence.frequency === 'daily') {
+    d.setDate(d.getDate() + interval);
+  } else if (recurrence.frequency === 'weekly') {
+    if (recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0) {
+      const currentDay = d.getDay();
+      const sortedDays = [...recurrence.daysOfWeek].sort((a, b) => a - b);
+      const nextDay = sortedDays.find(day => day > currentDay);
+      if (nextDay !== undefined) {
+        d.setDate(d.getDate() + (nextDay - currentDay));
+      } else {
+        const daysUntilNext = 7 - currentDay + sortedDays[0];
+        const weekOffset = (interval - 1) * 7;
+        d.setDate(d.getDate() + daysUntilNext + weekOffset);
+      }
+    } else {
+      d.setDate(d.getDate() + 7 * interval);
+    }
+  } else if (recurrence.frequency === 'monthly') {
+    d.setMonth(d.getMonth() + interval);
+  } else if (recurrence.frequency === 'yearly') {
+    d.setFullYear(d.getFullYear() + interval);
+  } else if (recurrence.frequency === 'custom_dates') {
+    if (recurrence.specificDates && recurrence.specificDates.length > 0) {
+      const next = recurrence.specificDates.find((sd: string) => sd > dateStr);
+      if (next) return next;
+    }
+    return null;
+  }
 
-// -------------------- TaskNode component (unchanged behavior) --------------------
-function TaskNode({
-  task,
-  onChange,
-  onDelete,
-  level = 0,
-}: {
-  task: any;
-  onChange: (t: any) => void;
-  onDelete?: (id: string) => void;
-  level?: number;
-}) {
+  const iso = toISODate(d);
+  if (recurrence.endDate && iso > recurrence.endDate) return null;
+  return iso;
+}
+
+// -------------------- TaskNode component --------------------
+function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange: (t: any) => void; onDelete?: (id: string) => void; level?: number; }) {
   const [expanded, setExpanded] = useState(false);
   const [childTitle, setChildTitle] = useState("");
   const [comment, setComment] = useState("");
@@ -165,35 +172,17 @@ function TaskNode({
   const updateSelf = (updates: any) => onChange({ ...task, ...updates });
 
   const updateChild = (updatedChild: any) => {
-    updateSelf({
-      subtasks: (task.subtasks || []).map((st: any) =>
-        st.id === updatedChild.id ? updatedChild : st
-      ),
-    });
+    updateSelf({ subtasks: (task.subtasks || []).map((st: any) => st.id === updatedChild.id ? updatedChild : st ) });
   };
 
   const deleteChild = (id: any) => {
-    updateSelf({
-      subtasks: (task.subtasks || []).filter((st: any) => st.id !== id),
-    });
+    updateSelf({ subtasks: (task.subtasks || []).filter((st: any) => st.id !== id) });
   };
 
   const addChild = () => {
     if (!childTitle.trim()) return;
     updateSelf({
-      subtasks: [
-        ...(task.subtasks || []),
-        {
-          id: uid(),
-          title: childTitle.trim(),
-          priority: "2",
-          completed: false,
-          progress: 0,
-          comments: [],
-          subtasks: [],
-          tags: [],
-        },
-      ],
+      subtasks: [...(task.subtasks || []), { id: uid(), title: childTitle.trim(), priority: "2", completed: false, progress: 0, comments: [], subtasks: [], tags: [] }],
     });
     setChildTitle("");
   };
@@ -209,8 +198,7 @@ function TaskNode({
   const addTag = () => {
     const parts = (tagInput || "").split(",").map(s => s.trim()).filter(Boolean);
     if (!parts.length) return;
-    const merged = Array.from(new Set([...(task.tags || []), ...parts]));
-    updateSelf({ tags: merged });
+    updateSelf({ tags: Array.from(new Set([...(task.tags || []), ...parts])) });
     setTagInput("");
   };
 
@@ -224,15 +212,17 @@ function TaskNode({
             <input
               type="checkbox"
               checked={!!task.completed}
-              onChange={e => {
-                e.stopPropagation();
-                updateSelf({ completed: !task.completed });
-              }}
+              onChange={e => { e.stopPropagation(); updateSelf({ completed: !task.completed }); }}
               className="mt-1 w-4 h-4 accent-blue-500"
             />
             <div>
               <div className={`font-medium ${task.completed ? "line-through text-slate-400" : "text-white"}`}>
                 {task.title}
+                {task.recurrence && task.recurrence.frequency !== 'none' && (
+                  <span className="ml-2 text-xs text-blue-400 bg-blue-900/40 px-1.5 py-0.5 rounded" title="Recurring task">
+                    🔁 {task.recurrence.frequency}
+                  </span>
+                )}
               </div>
               {task.date && <div className="text-xs text-slate-400">{task.date}</div>}
               <div className="mt-2 flex gap-2 flex-wrap">
@@ -266,6 +256,7 @@ function TaskNode({
                 <input type="range" min="0" max="100" value={task.progress || 0} onChange={e => updateSelf({ progress: Number(e.target.value) })} className="w-full" />
               </div>
 
+              {/* Subtasks */}
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-slate-200">Subtasks</div>
                 {(task.subtasks || []).map((st: any) => (
@@ -286,11 +277,8 @@ function TaskNode({
                         <Button size="sm" className="bg-red-600 hover:bg-red-500" onClick={() => deleteChild(st.id)}>Delete</Button>
                       </div>
                     </div>
-
                     {openChildren[st.id] && (
-                      <div className="mt-3">
-                        <TaskNode task={st} onChange={updateChild} onDelete={deleteChild} level={level + 2} />
-                      </div>
+                      <div className="mt-3"><TaskNode task={st} onChange={updateChild} onDelete={deleteChild} level={level + 2} /></div>
                     )}
                   </div>
                 ))}
@@ -300,6 +288,7 @@ function TaskNode({
                 </div>
               </div>
 
+              {/* Comments */}
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-slate-200">Comments</div>
                 {(task.comments || []).map((c: string, i: number) => (<div key={i} className="text-sm bg-slate-700 p-2 rounded text-slate-200">{c}</div>))}
@@ -309,6 +298,7 @@ function TaskNode({
                 </div>
               </div>
 
+              {/* Tags */}
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-slate-200">Tags</div>
                 <div className="flex gap-2 items-center flex-wrap">
@@ -324,21 +314,18 @@ function TaskNode({
   );
 }
 
-// -------------------- helpers for tags & traversal (unchanged) --------------------
+// -------------------- helpers for tags & traversal --------------------
 function collectAllTags(tasks: any[]): string[] {
   const set = new Set<string>();
-
   function walk(list: any[]) {
     (list || []).forEach((t: any) => {
       (t.tags || []).forEach((tag: string) => set.add(tag));
       if (t.subtasks) walk(t.subtasks);
     });
   }
-
   walk(tasks);
   return Array.from(set).sort();
 }
-
 
 function collectTasksWithTag(tasks: any[], tag: string): any[] {
   const result: any[] = [];
@@ -353,7 +340,7 @@ function collectTasksWithTag(tasks: any[], tag: string): any[] {
   return result;
 }
 
-// -------------------- Main TodoApp (storage switched to Supabase) --------------------
+// -------------------- Main TodoApp --------------------
 export default function TodoApp() {
   const [profiles, setProfiles] = useState(["Default"]);
   const [activeProfile, setActiveProfile] = useState(() => {
@@ -366,6 +353,18 @@ export default function TodoApp() {
   const [date, setDate] = useState("");
   const [priority, setPriority] = useState("2");
   const [tagInput, setTagInput] = useState("");
+
+  // Bugfix: Fixing race condition when loading list of tasks and updating DB - state variable to track the loading status
+  const [tasksLoaded, setTasksLoaded] = useState(false);
+  
+  // Recurrence state
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recFreq, setRecFreq] = useState("daily");
+  const [recInterval, setRecInterval] = useState(1);
+  const [recDays, setRecDays] = useState<number[]>([]);
+  const [recEndDate, setRecEndDate] = useState("");
+  const [recDatesInput, setRecDatesInput] = useState("");
+
   const [activeTab, setActiveTab] = useState("calendar");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [findQuery, setFindQuery] = useState("");
@@ -375,61 +374,60 @@ export default function TodoApp() {
   const [findDateFrom, setFindDateFrom] = useState("");
   const [findDateTo, setFindDateTo] = useState("");
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [openChildren, setOpenChildren] = useState<Record<string, boolean>>({});
 
-  // Load profiles once from DB on mount
   useEffect(() => {
     let mounted = true;
     (async () => {
       const list = await loadProfilesFromDB();
       if (!mounted) return;
       setProfiles(list);
-      // use previously selected profile if still present
       if (typeof window !== "undefined") {
         const saved = localStorage.getItem("activeProfile");
         if (saved && list.includes(saved)) setActiveProfile(saved);
         else setActiveProfile(list[0] || "Default");
-      } else {
-        setActiveProfile(list[0] || "Default");
       }
     })();
     return () => { mounted = false; };
   }, []);
 
-  // Whenever activeProfile changes, load tasks for it from DB
+  // Bugfix: Fixing race condition when loading list of tasks and updating DB - Update the Fetching Hook to manage a lock on updating tasks
   useEffect(() => {
     if (!activeProfile) return;
     let mounted = true;
+  
+    // 1. Lock saving whenever profile changes
+    setTasksLoaded(false); 
+  
     (async () => {
       const loaded = await loadTasksFromDB(activeProfile);
       if (!mounted) return;
       setTasks(Array.isArray(loaded) ? loaded : []);
+    
+      // 2. Unlock saving once data is safely in state
+      setTasksLoaded(true); 
     })();
-    // also persist activeProfile locally for quick UI restore
+  
     if (typeof window !== "undefined") localStorage.setItem("activeProfile", activeProfile);
     return () => { mounted = false; };
   }, [activeProfile]);
 
-  // Save tasks to DB whenever tasks change
-useEffect(() => {
-  if (!activeProfile) return;
-  (async () => {
-    try {
-      await saveTasksToDB(activeProfile, tasks);
-      // remove orphaned rows that the user deleted locally
-      await cleanupDeletedTasks(activeProfile, tasks);
-    } catch (e) {
-      console.error("Error saving tasks & cleaning up:", e);
-    }
-  })();
-}, [tasks, activeProfile]);
-
-
-  // Save profiles to DB whenever profiles change
+  // Bugfix: Fixing race condition when loading list of tasks and updating DB - Update the Saving Hook to respect the lock
   useEffect(() => {
+    // Prevent auto-save from running if tasks haven't finished loading yet!
+    if (!activeProfile || !tasksLoaded) return; 
+  
     (async () => {
-      await saveProfilesToDB(profiles);
+      try {
+        await saveTasksToDB(activeProfile, tasks);
+        await cleanupDeletedTasks(activeProfile, tasks);
+      } catch (e) {
+        console.error("Error saving tasks:", e);
+      }
     })();
+  }, [tasks, activeProfile, tasksLoaded]);
+
+  useEffect(() => {
+    (async () => { await saveProfilesToDB(profiles); })();
   }, [profiles]);
 
   const today = toISODate(new Date());
@@ -447,39 +445,70 @@ useEffect(() => {
     const updated = profiles.filter(p => p !== name);
     setProfiles(updated);
     if (activeProfile === name) setActiveProfile(updated[0]);
-    // also remove tasks for that profile from DB
     (async () => {
       if (!supabase) return;
       try {
         await supabase.from("tasks").delete().eq("profile", name);
         await supabase.from("profiles").delete().eq("name", name);
-      } catch (e) {
-        console.error("deleteProfile error", e);
-      }
+      } catch (e) {}
     })();
   };
 
   const addTask = () => {
     if (!title.trim() || !date) return;
     const tags = (tagInput || "").split(",").map(s => s.trim()).filter(Boolean);
-    const newTask = { id: uid(), title: title.trim(), date, priority, completed: false, progress: 0, comments: [], subtasks: [], tags };
+    
+    let recurrence = undefined;
+    if (isRecurring && recFreq !== "none") {
+      recurrence = {
+        frequency: recFreq,
+        interval: Number(recInterval) || 1,
+        daysOfWeek: recFreq === 'weekly' ? recDays : [],
+        endDate: recEndDate || undefined,
+        specificDates: recFreq === 'custom_dates' 
+          ? recDatesInput.split(',').map(s=>s.trim()).filter(Boolean).sort()
+          : []
+      };
+    }
+
+    const newTask = { 
+      id: uid(), title: title.trim(), date, priority, completed: false, progress: 0, 
+      comments: [], subtasks: [], tags, recurrence 
+    };
+    
     setTasks(prev => [...prev, newTask]);
-    setTitle("");
-    setDate("");
-    setPriority("2");
-    setTagInput("");
+    setTitle(""); setDate(""); setPriority("2"); setTagInput("");
+    setIsRecurring(false); setRecFreq("daily"); setRecInterval(1); setRecDays([]); setRecEndDate(""); setRecDatesInput("");
   };
 
-  const updateTask = (updated: any) =>
-  setTasks((prev: any[]) =>
-    prev.map(t => (t.id === updated.id ? updated : t))
-  );
+  const updateTask = (updated: any) => {
+    setTasks((prev: any[]) => {
+      const oldTask = prev.find(t => t.id === updated.id);
+      let newTasks = prev.map(t => (t.id === updated.id ? updated : t));
 
-  const deleteTask = (id: string) =>
-  setTasks((prev: any[]) =>
-    prev.filter(t => t.id !== id)
-  );
+      // Handle spawning of next recurring occurrence upon completion
+      if (oldTask && !oldTask.completed && updated.completed && updated.recurrence && !updated.nextInstanceGenerated) {
+        const nextDate = getNextOccurrence(updated.date, updated.recurrence);
+        if (nextDate) {
+          updated.nextInstanceGenerated = true; // Mark to prevent duplicate spawning
+          const nextTask = {
+            ...updated,
+            id: uid(),
+            date: nextDate,
+            completed: false,
+            progress: 0,
+            nextInstanceGenerated: false,
+            comments: [], // Reset comments for next occurrence
+            subtasks: (updated.subtasks || []).map((st: any) => ({ ...st, completed: false, progress: 0 }))
+          };
+          newTasks.push(nextTask);
+        }
+      }
+      return newTasks;
+    });
+  };
 
+  const deleteTask = (id: string) => setTasks((prev: any[]) => prev.filter(t => t.id !== id));
 
   const filteredTasks = useMemo(() => {
     let result = Array.isArray(tasks) ? tasks : [];
@@ -500,7 +529,6 @@ useEffect(() => {
   const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
   const startDay = monthStart.getDay();
   const daysInMonth = monthEnd.getDate();
-
   const calendarDays = [];
   for (let i = 0; i < startDay; i++) calendarDays.push(null);
   for (let d = 1; d <= daysInMonth; d++) calendarDays.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d));
@@ -527,16 +555,12 @@ useEffect(() => {
   }, [tasks, tasksByDate, today]);
 
   const tabClass = (active: boolean) => `px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${active ? "bg-blue-500 text-white shadow-lg scale-105" : "bg-gray-700 text-gray-200 hover:bg-gray-600"}`;
-
   const allTags = useMemo(() => collectAllTags(tasks), [tasks]);
 
   const flattenedTasks = useMemo(() => {
     const out: any[] = [];
     function walk(list: any[]) {
-      (list || []).forEach(t => {
-        out.push(t);
-        if (t.subtasks) walk(t.subtasks);
-      });
+      (list || []).forEach(t => { out.push(t); if (t.subtasks) walk(t.subtasks); });
     }
     walk(tasks);
     return out;
@@ -551,44 +575,31 @@ useEffect(() => {
       if (findCompleted === "active" && t.completed) return false;
       if (findDateFrom && t.date && t.date < findDateFrom) return false;
       if (findDateTo && t.date && t.date > findDateTo) return false;
-      if (q) {
-        return (t.title || "").toLowerCase().includes(q) || (t.comments || []).some((c: string) => c.toLowerCase().includes(q));
-      }
+      if (q) return (t.title || "").toLowerCase().includes(q) || (t.comments || []).some((c: string) => c.toLowerCase().includes(q));
       return true;
     });
   }, [flattenedTasks, findQuery, findPriority, findTag, findCompleted, findDateFrom, findDateTo]);
 
   const byDateDetailed = useMemo(() => {
       const map: Record<string, any> = {};
-
       (analyticsData.byDate || []).forEach(d => {
         const tasksForDate = tasksByDate[d.date] || [];
         const completedCount = tasksForDate.filter(t => t.completed).length;
-        const avg = tasksForDate.length
-          ? Math.round(tasksForDate.reduce((a, b) => a + (b.progress || 0), 0) / tasksForDate.length)
-          : 0;
-
-        map[d.date] = {
-          date: d.date,
-          count: d.count,
-          completedCount,
-          avgProgress: avg,
-          completedPct: tasksForDate.length
-            ? Math.round((completedCount / tasksForDate.length) * 100)
-            : 0,
-        };
+        const avg = tasksForDate.length ? Math.round(tasksForDate.reduce((a, b) => a + (b.progress || 0), 0) / tasksForDate.length) : 0;
+        map[d.date] = { date: d.date, count: d.count, completedCount, avgProgress: avg, completedPct: tasksForDate.length ? Math.round((completedCount / tasksForDate.length) * 100) : 0 };
       });
-
       return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
     }, [analyticsData.byDate, tasksByDate]);
 
-
   const byTagDetailed = useMemo(() => (analyticsData.byTag || []).map(t => ({ ...t, remaining: t.count - t.completedCount })), [analyticsData.byTag]);
-
   const priorityWithPct = useMemo(() => {
     const total = analyticsData.byPriority.reduce((s,p)=>s+p.value,0) || 1;
     return analyticsData.byPriority.map((p,i) => ({ ...p, pct: Math.round((p.value/total)*100), color: Object.values(priorityColor)[i] }));
   }, [analyticsData.byPriority]);
+
+  const toggleDay = (day: number) => {
+    setRecDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 p-8">
@@ -600,18 +611,11 @@ useEffect(() => {
             <Select value={activeProfile} onValueChange={setActiveProfile}>
               <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-48"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-slate-800 text-white">
-                {profiles.map(p => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
+                {profiles.map(p => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
               </SelectContent>
             </Select>
 
-            <Input
-              placeholder="New profile name"
-              value={newProfileName}
-              onChange={e => setNewProfileName(e.target.value)}
-              className="bg-slate-700 border-slate-600 text-white w-48"
-            />
+            <Input placeholder="New profile name" value={newProfileName} onChange={e => setNewProfileName(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-48" />
             <Button className="bg-blue-600 hover:bg-blue-500" onClick={addProfile}>Add Profile</Button>
 
             {profiles.length > 1 && (
@@ -633,20 +637,75 @@ useEffect(() => {
         {activeTab === "tasks" && (
           <Card className="bg-slate-800 border border-slate-700 rounded-2xl">
             <CardContent className="p-6 space-y-4">
-              <div className="flex gap-3 flex-wrap">
-                <Input placeholder="Task title" value={title} onChange={e => setTitle(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
-                <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
-                <Select value={priority} onValueChange={setPriority}>
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-40"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-slate-800 text-white">
-                    {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-                <Input placeholder="tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
-                <Button className="bg-blue-600 hover:bg-blue-500" onClick={addTask}>Add</Button>
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-3 flex-wrap items-center">
+                  <Input placeholder="Task title" value={title} onChange={e => setTitle(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-64" />
+                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-40" />
+                  <Select value={priority} onValueChange={setPriority}>
+                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-slate-800 text-white">
+                      {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                  <Input placeholder="tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-48" />
+                  
+                  <div className="flex items-center gap-2 bg-slate-700 px-3 py-2 rounded-md border border-slate-600 cursor-pointer" onClick={() => setIsRecurring(!isRecurring)}>
+                    <input type="checkbox" checked={isRecurring} onChange={() => {}} className="accent-blue-500 pointer-events-none" />
+                    <span className="text-sm">Recurring</span>
+                  </div>
+
+                  <Button className="bg-blue-600 hover:bg-blue-500" onClick={addTask}>Add Task</Button>
+                </div>
+
+                {/* Recurrence Settings Menu */}
+                <AnimatePresence>
+                  {isRecurring && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-700/50 border border-slate-600 p-4 rounded-xl flex gap-4 flex-wrap items-center overflow-hidden">
+                      <Select value={recFreq} onValueChange={setRecFreq}>
+                        <SelectTrigger className="bg-slate-800 border-slate-600 text-white w-36"><SelectValue placeholder="Frequency" /></SelectTrigger>
+                        <SelectContent className="bg-slate-800 text-white">
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="yearly">Yearly</SelectItem>
+                          <SelectItem value="custom_dates">Specific Dates</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      {['daily', 'weekly', 'monthly', 'yearly'].includes(recFreq) && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-slate-300">Every</span>
+                          <Input type="number" min="1" value={recInterval} onChange={e => setRecInterval(Number(e.target.value))} className="bg-slate-800 border-slate-600 text-white w-20 text-center" />
+                          <span className="text-sm text-slate-300">
+                            {recFreq === 'daily' ? 'days' : recFreq === 'weekly' ? 'weeks' : recFreq === 'monthly' ? 'months' : 'years'}
+                          </span>
+                        </div>
+                      )}
+
+                      {recFreq === 'weekly' && (
+                        <div className="flex gap-1 border-l border-slate-600 pl-4 ml-2">
+                           {["S","M","T","W","T","F","S"].map((d, i) => (
+                              <button key={i} onClick={() => toggleDay(i)} className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${recDays.includes(i) ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-600'}`}>
+                                {d}
+                              </button>
+                           ))}
+                        </div>
+                      )}
+
+                      {recFreq === 'custom_dates' && (
+                        <Input placeholder="e.g. 2026-06-01, 2026-12-25" value={recDatesInput} onChange={e => setRecDatesInput(e.target.value)} className="bg-slate-800 border-slate-600 text-white w-64" />
+                      )}
+
+                      <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-sm text-slate-300">End Date (optional):</span>
+                        <Input type="date" value={recEndDate} onChange={e => setRecEndDate(e.target.value)} className="bg-slate-800 border-slate-600 text-white w-40" />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 mt-6">
                 {filteredTasks.map(task => (
                   <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
                 ))}
