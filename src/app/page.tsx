@@ -349,12 +349,13 @@ export default function TodoApp() {
   });
   const [newProfileName, setNewProfileName] = useState('');
   const [tasks, setTasks] = useState<any[]>([]);
+  
+  // Improvment 2: Initialize date field with today's date instead of empty string
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(() => toISODate(new Date()));
   const [priority, setPriority] = useState("2");
   const [tagInput, setTagInput] = useState("");
 
-  // Bugfix: Fixing race condition when loading list of tasks and updating DB - state variable to track the loading status
   const [tasksLoaded, setTasksLoaded] = useState(false);
   
   // Recurrence state
@@ -366,7 +367,12 @@ export default function TodoApp() {
   const [recDatesInput, setRecDatesInput] = useState("");
 
   const [activeTab, setActiveTab] = useState("calendar");
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  
+  // Improvement 1: Store open/collapsed state of date groups. Current date is open by default.
+  const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>(() => ({
+    [toISODate(new Date())]: true
+  }));
+
   const [findQuery, setFindQuery] = useState("");
   const [findPriority, setFindPriority] = useState("all");
   const [findTag, setFindTag] = useState("all");
@@ -390,32 +396,22 @@ export default function TodoApp() {
     return () => { mounted = false; };
   }, []);
 
-  // Bugfix: Fixing race condition when loading list of tasks and updating DB - Update the Fetching Hook to manage a lock on updating tasks
   useEffect(() => {
     if (!activeProfile) return;
     let mounted = true;
-  
-    // 1. Lock saving whenever profile changes
     setTasksLoaded(false); 
-  
     (async () => {
       const loaded = await loadTasksFromDB(activeProfile);
       if (!mounted) return;
       setTasks(Array.isArray(loaded) ? loaded : []);
-    
-      // 2. Unlock saving once data is safely in state
       setTasksLoaded(true); 
     })();
-  
     if (typeof window !== "undefined") localStorage.setItem("activeProfile", activeProfile);
     return () => { mounted = false; };
   }, [activeProfile]);
 
-  // Bugfix: Fixing race condition when loading list of tasks and updating DB - Update the Saving Hook to respect the lock
   useEffect(() => {
-    // Prevent auto-save from running if tasks haven't finished loading yet!
     if (!activeProfile || !tasksLoaded) return; 
-  
     (async () => {
       try {
         await saveTasksToDB(activeProfile, tasks);
@@ -477,7 +473,8 @@ export default function TodoApp() {
     };
     
     setTasks(prev => [...prev, newTask]);
-    setTitle(""); setDate(""); setPriority("2"); setTagInput("");
+    // Improvment 2: Reset to today's date
+    setTitle(""); setDate(toISODate(new Date())); setPriority("2"); setTagInput("");
     setIsRecurring(false); setRecFreq("daily"); setRecInterval(1); setRecDays([]); setRecEndDate(""); setRecDatesInput("");
   };
 
@@ -486,11 +483,10 @@ export default function TodoApp() {
       const oldTask = prev.find(t => t.id === updated.id);
       let newTasks = prev.map(t => (t.id === updated.id ? updated : t));
 
-      // Handle spawning of next recurring occurrence upon completion
       if (oldTask && !oldTask.completed && updated.completed && updated.recurrence && !updated.nextInstanceGenerated) {
         const nextDate = getNextOccurrence(updated.date, updated.recurrence);
         if (nextDate) {
-          updated.nextInstanceGenerated = true; // Mark to prevent duplicate spawning
+          updated.nextInstanceGenerated = true;
           const nextTask = {
             ...updated,
             id: uid(),
@@ -498,7 +494,7 @@ export default function TodoApp() {
             completed: false,
             progress: 0,
             nextInstanceGenerated: false,
-            comments: [], // Reset comments for next occurrence
+            comments: [],
             subtasks: (updated.subtasks || []).map((st: any) => ({ ...st, completed: false, progress: 0 }))
           };
           newTasks.push(nextTask);
@@ -510,12 +506,6 @@ export default function TodoApp() {
 
   const deleteTask = (id: string) => setTasks((prev: any[]) => prev.filter(t => t.id !== id));
 
-  const filteredTasks = useMemo(() => {
-    let result = Array.isArray(tasks) ? tasks : [];
-    if (selectedDate) result = result.filter(t => t.date === selectedDate);
-    return [...result].sort((a, b) => Number(b.priority) - Number(a.priority));
-  }, [tasks, selectedDate]);
-
   const tasksByDate = useMemo(() => {
     const map: Record<string, any[]> = {};
     tasks.forEach((t: any) => {
@@ -524,6 +514,26 @@ export default function TodoApp() {
     });
     return map;
   }, [tasks]);
+
+  // Improvement 1: Group tasks and sort the dates
+  const groupedTasksByDate = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    const sortedTasks = [...tasks].sort((a, b) => Number(b.priority) - Number(a.priority));
+    sortedTasks.forEach(t => {
+      const d = t.date || "No Date";
+      if (!groups[d]) groups[d] = [];
+      groups[d].push(t);
+    });
+    return groups;
+  }, [tasks]);
+
+  const sortedDates = useMemo(() => {
+    return Object.keys(groupedTasksByDate).sort((a, b) => {
+      if (a === "No Date") return 1;
+      if (b === "No Date") return -1;
+      return a.localeCompare(b);
+    });
+  }, [groupedTasksByDate]);
 
   const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
@@ -705,9 +715,49 @@ export default function TodoApp() {
                 </AnimatePresence>
               </div>
 
-              <div className="space-y-3 mt-6">
-                {filteredTasks.map(task => (
-                  <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
+              {/* Improvement 1: Render Tasks in grouped date dropdowns */}
+              <div className="space-y-4 mt-6">
+                {sortedDates.length === 0 && <div className="text-slate-400">No tasks yet</div>}
+                
+                {sortedDates.map(dateKey => (
+                  <div key={dateKey} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-sm">
+                    <div
+                      className="p-4 bg-slate-700/60 hover:bg-slate-700 cursor-pointer font-semibold flex justify-between items-center transition-colors"
+                      onClick={() => setExpandedDates(prev => ({ ...prev, [dateKey]: !prev[dateKey] }))}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span 
+                          className="transform transition-transform duration-200 text-xs text-slate-400" 
+                          style={{ transform: expandedDates[dateKey] ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                        >
+                          ▶
+                        </span>
+                        <span className="text-slate-200 text-lg">
+                          {dateKey === today ? `Today (${dateKey})` : dateKey}
+                        </span>
+                      </div>
+                      <span className="text-sm bg-slate-600/80 text-slate-300 px-3 py-1 rounded-full">
+                        {groupedTasksByDate[dateKey].length} tasks
+                      </span>
+                    </div>
+                    
+                    <AnimatePresence>
+                      {expandedDates[dateKey] && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }} 
+                          animate={{ height: "auto", opacity: 1 }} 
+                          exit={{ height: 0, opacity: 0 }} 
+                          className="overflow-hidden bg-slate-800"
+                        >
+                          <div className="p-4 space-y-3 border-t border-slate-700/50">
+                            {groupedTasksByDate[dateKey].map(task => (
+                              <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 ))}
               </div>
             </CardContent>
@@ -735,7 +785,15 @@ export default function TodoApp() {
                   const avg = dayTasks.length ? dayTasks.reduce((a,b)=>a+(b.progress||0),0)/dayTasks.length : 0;
                   const bg = avg === 100 ? "bg-green-600" : avg > 0 ? "bg-yellow-600" : dayTasks.length ? "bg-red-600" : "bg-slate-700";
                   return (
-                    <div key={iso} onClick={() => { setSelectedDate(iso); setActiveTab("tasks"); }} className={`p-3 rounded-xl cursor-pointer ${bg} hover:opacity-80`}>
+                    <div 
+                      key={iso} 
+                      onClick={() => { 
+                        // Automatically expand the chosen date when clicked from calendar, and navigate to tasks
+                        setExpandedDates(prev => ({ ...prev, [iso]: true })); 
+                        setActiveTab("tasks"); 
+                      }} 
+                      className={`p-3 rounded-xl cursor-pointer ${bg} hover:opacity-80 transition-opacity`}
+                    >
                       {day.getDate()}
                       {dayTasks.length > 0 && <div className="text-xs mt-1">{dayTasks.length} tasks</div>}
                     </div>
