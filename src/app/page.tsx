@@ -22,6 +22,13 @@ const priorityColor = {
   "1": "#22c55e",
 };
 
+const priorityIcon: Record<string, string> = {
+  "4": "🚨",
+  "3": "⚠️",
+  "2": "📌",
+  "1": "🟢",
+};
+
 const safeParse = (v: string | null) => {
   try {
     return v ? JSON.parse(v) : null;
@@ -79,14 +86,18 @@ async function saveProfilesToDB(profiles: string[]) {
   }
 }
 
-async function loadTasksFromDB(profile: string): Promise<any[]> {
-  if (!supabase) return [];
+async function loadTasksFromDB(profile: string): Promise<any[] | null> {
+  if (!supabase) return null;
   try {
     const { data, error } = await supabase.from("tasks").select("id, content").eq("profile", profile);
-    if (error) return [];
+    if (error) {
+      console.error("loadTasksFromDB error:", error);
+      return null;
+    }
     return (data || []).map((r: any) => (typeof r.content === "string" ? safeParse(r.content) || null : r.content)).filter(Boolean);
   } catch (e) {
-    return [];
+    console.error("loadTasksFromDB exception:", e);
+    return null;
   }
 }
 
@@ -168,6 +179,9 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
   const [comment, setComment] = useState("");
   const [openChildren, setOpenChildren] = useState<Record<string, boolean>>({});
   const [tagInput, setTagInput] = useState("");
+  
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [tempTitle, setTempTitle] = useState(task.title);
 
   const updateSelf = (updates: any) => onChange({ ...task, ...updates });
 
@@ -204,32 +218,62 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
 
   const removeTag = (tag: any) => updateSelf({ tags: (task.tags || []).filter((t: any) => t !== tag) });
 
+  const saveTitle = () => {
+    setIsEditingTitle(false);
+    if (tempTitle.trim() && tempTitle !== task.title) {
+        updateSelf({ title: tempTitle.trim() });
+    } else {
+        setTempTitle(task.title);
+    }
+  };
+
   return (
     <div className="space-y-3" style={{ marginLeft: level * 20 }}>
-      <div className="p-4 rounded-xl border border-slate-600 bg-slate-800 hover:bg-slate-700 transition-all">
+      <div className="p-4 rounded-xl border border-slate-600 bg-slate-800 hover:bg-slate-700 transition-all relative overflow-hidden">
         <div className="flex justify-between items-start gap-4">
-          <div className="flex items-start gap-3 cursor-pointer" onClick={() => setExpanded(e => !e)}>
+          <div className="flex items-start gap-3 cursor-pointer flex-1" onClick={() => setExpanded(e => !e)}>
             <input
               type="checkbox"
               checked={!!task.completed}
               onChange={e => { e.stopPropagation(); updateSelf({ completed: !task.completed }); }}
               className="mt-1 w-4 h-4 accent-blue-500"
             />
-            <div>
+            <div className="flex-1">
               <div className={`font-medium ${task.completed ? "line-through text-slate-400" : "text-white"}`}>
-                {task.title}
+                
+                {isEditingTitle ? (
+                    <input 
+                        type="text"
+                        autoFocus
+                        value={tempTitle}
+                        onChange={(e) => setTempTitle(e.target.value)}
+                        onBlur={saveTitle}
+                        onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
+                        onClick={(e) => e.stopPropagation()}
+                        className="bg-slate-900 border border-blue-500 text-white px-2 py-0.5 rounded outline-none w-full max-w-sm"
+                    />
+                ) : (
+                    <span 
+                        onDoubleClick={(e) => { e.stopPropagation(); setIsEditingTitle(true); }}
+                        title="Double click to edit"
+                    >
+                        {task.title}
+                    </span>
+                )}
+
                 {task.recurrence && task.recurrence.frequency !== 'none' && (
-                  <span className="ml-2 text-xs text-blue-400 bg-blue-900/40 px-1.5 py-0.5 rounded" title="Recurring task">
+                  <span className="ml-2 text-xs text-blue-400 bg-blue-900/40 px-1.5 py-0.5 rounded inline-block translate-y-[-2px]" title="Recurring task">
                     🔁 {task.recurrence.frequency}
                   </span>
                 )}
               </div>
               {task.date && <div className="text-xs text-slate-400">{task.date}</div>}
+              
               <div className="mt-2 flex gap-2 flex-wrap">
                 {(task.tags || []).map((tag: string) => (
                   <div key={tag} className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded flex items-center gap-2">
                     <span>{tag}</span>
-                    <button onClick={e => { e.stopPropagation(); removeTag(tag); }} className="text-xs text-red-400">✕</button>
+                    <button onClick={e => { e.stopPropagation(); removeTag(tag); }} className="text-xs text-red-400 hover:text-red-300">✕</button>
                   </div>
                 ))}
               </div>
@@ -237,27 +281,36 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
           </div>
           <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
             <Select value={task.priority} onValueChange={v => updateSelf({ priority: v })}>
-              <SelectTrigger className="bg-slate-600 border-slate-500 text-white w-36"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="bg-slate-600 border-slate-500 text-white w-32 md:w-36 h-8 text-xs md:text-sm"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-slate-800 text-white">
                 {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
               </SelectContent>
             </Select>
             {onDelete && (
-              <Button className="bg-red-600 hover:bg-red-500" onClick={() => onDelete(task.id)}>Delete</Button>
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-red-400 hover:bg-red-900/20 px-2 h-8" onClick={() => onDelete(task.id)}>🗑️</Button>
             )}
           </div>
         </div>
 
+        {(task.progress || 0) > 0 && !task.completed && (
+            <div className="absolute bottom-0 left-0 h-1 bg-slate-600 w-full opacity-50">
+                <div className="h-full bg-blue-500" style={{ width: `${task.progress}%` }} />
+            </div>
+        )}
+
         <AnimatePresence>
           {expanded && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-4 space-y-4">
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-4 space-y-4 pb-2">
               <div>
-                <div className="text-sm text-slate-300 mb-1">Progress: {task.progress || 0}%</div>
-                <input type="range" min="0" max="100" value={task.progress || 0} onChange={e => updateSelf({ progress: Number(e.target.value) })} className="w-full" />
+                <div className="text-sm text-slate-300 mb-1 flex justify-between">
+                    <span>Progress</span>
+                    <span className="font-mono text-blue-400">{task.progress || 0}%</span>
+                </div>
+                <input type="range" min="0" max="100" value={task.progress || 0} onChange={e => updateSelf({ progress: Number(e.target.value) })} className="w-full accent-blue-500" />
               </div>
 
               {/* Subtasks */}
-              <div className="space-y-2">
+              <div className="space-y-2 bg-slate-900/30 p-3 rounded-lg border border-slate-700/50">
                 <div className="text-sm font-semibold text-slate-200">Subtasks</div>
                 {(task.subtasks || []).map((st: any) => (
                   <div key={st.id} className="bg-slate-800 border border-slate-700 rounded-lg p-2 mb-2">
@@ -268,13 +321,13 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
                       </div>
                       <div className="flex items-center gap-2">
                         <Select value={st.priority} onValueChange={v => updateChild({ ...st, priority: v })}>
-                          <SelectTrigger className="bg-slate-600 border-slate-500 text-white w-36"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="bg-slate-600 border-slate-500 text-white w-28 h-7 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent className="bg-slate-800 text-white">
                             {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
                           </SelectContent>
                         </Select>
-                        <Button size="sm" className="bg-gray-600 hover:bg-gray-500" onClick={() => toggleChildOpen(st.id)}>{openChildren[st.id] ? "Collapse" : "Open"}</Button>
-                        <Button size="sm" className="bg-red-600 hover:bg-red-500" onClick={() => deleteChild(st.id)}>Delete</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs px-2 bg-gray-700 hover:bg-gray-600" onClick={() => toggleChildOpen(st.id)}>{openChildren[st.id] ? "Hide" : "Open"}</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-red-400 hover:text-red-300 hover:bg-red-900/30" onClick={() => deleteChild(st.id)}>✕</Button>
                       </div>
                     </div>
                     {openChildren[st.id] && (
@@ -283,29 +336,33 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
                   </div>
                 ))}
                 <div className="flex gap-2">
-                  <Input placeholder="Add child task" value={childTitle} onChange={e => setChildTitle(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
-                  <Button className="bg-blue-600 hover:bg-blue-500" onClick={addChild}>Add</Button>
+                  <Input placeholder="Add subtask" value={childTitle} onChange={e => setChildTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addChild()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm" />
+                  <Button size="sm" className="bg-blue-600 hover:bg-blue-500 h-8" onClick={addChild}>Add</Button>
                 </div>
               </div>
 
-              {/* Comments */}
-              <div className="space-y-2">
-                <div className="text-sm font-semibold text-slate-200">Comments</div>
-                {(task.comments || []).map((c: string, i: number) => (<div key={i} className="text-sm bg-slate-700 p-2 rounded text-slate-200">{c}</div>))}
-                <div className="flex gap-2">
-                  <Input placeholder="Add remark" value={comment} onChange={e => setComment(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
-                  <Button className="bg-emerald-600 hover:bg-emerald-500" onClick={addComment}>Add</Button>
-                </div>
+              {/* Comments & Tags Grid */}
+              <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-slate-200">Comments</div>
+                    <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
+                        {(task.comments || []).map((c: string, i: number) => (<div key={i} className="text-sm bg-slate-700/50 p-2 rounded text-slate-200">{c}</div>))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input placeholder="Add remark" value={comment} onChange={e => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addComment()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm" />
+                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 h-8" onClick={addComment}>Add</Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-slate-200">Tags</div>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <Input placeholder="tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTag()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm" />
+                      <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 h-8" onClick={addTag}>Add</Button>
+                    </div>
+                  </div>
               </div>
 
-              {/* Tags */}
-              <div className="space-y-2">
-                <div className="text-sm font-semibold text-slate-200">Tags</div>
-                <div className="flex gap-2 items-center flex-wrap">
-                  <Input placeholder="add tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
-                  <Button className="bg-indigo-600 hover:bg-indigo-500" onClick={addTag}>Add Tag</Button>
-                </div>
-              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -350,11 +407,11 @@ export default function TodoApp() {
   const [newProfileName, setNewProfileName] = useState('');
   const [tasks, setTasks] = useState<any[]>([]);
   
-  // Improvment 2: Initialize date field with today's date instead of empty string
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [priority, setPriority] = useState("2");
   const [tagInput, setTagInput] = useState("");
+  const [hideCompleted, setHideCompleted] = useState(false);
 
   const [tasksLoaded, setTasksLoaded] = useState(false);
   
@@ -368,9 +425,9 @@ export default function TodoApp() {
 
   const [activeTab, setActiveTab] = useState("calendar");
   
-  // Improvement 1: Store open/collapsed state of date groups. Current date is open by default.
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>(() => ({
-    [toISODate(new Date())]: true
+    [toISODate(new Date())]: true,
+    "⚠️ Overdue": true
   }));
 
   const [findQuery, setFindQuery] = useState("");
@@ -403,8 +460,13 @@ export default function TodoApp() {
     (async () => {
       const loaded = await loadTasksFromDB(activeProfile);
       if (!mounted) return;
-      setTasks(Array.isArray(loaded) ? loaded : []);
-      setTasksLoaded(true); 
+      
+      if (loaded !== null) {
+        setTasks(Array.isArray(loaded) ? loaded : []);
+        setTasksLoaded(true); 
+      } else {
+        console.error("Database connection failed. Sync locked to prevent data loss.");
+      }
     })();
     if (typeof window !== "undefined") localStorage.setItem("activeProfile", activeProfile);
     return () => { mounted = false; };
@@ -473,7 +535,6 @@ export default function TodoApp() {
     };
     
     setTasks(prev => [...prev, newTask]);
-    // Improvment 2: Reset to today's date
     setTitle(""); setDate(toISODate(new Date())); setPriority("2"); setTagInput("");
     setIsRecurring(false); setRecFreq("daily"); setRecInterval(1); setRecDays([]); setRecEndDate(""); setRecDatesInput("");
   };
@@ -515,20 +576,26 @@ export default function TodoApp() {
     return map;
   }, [tasks]);
 
-  // Improvement 1: Group tasks and sort the dates
   const groupedTasksByDate = useMemo(() => {
     const groups: Record<string, any[]> = {};
     const sortedTasks = [...tasks].sort((a, b) => Number(b.priority) - Number(a.priority));
+    
     sortedTasks.forEach(t => {
-      const d = t.date || "No Date";
+      if (hideCompleted && t.completed) return; 
+
+      const isOverdue = t.date && t.date < today && !t.completed;
+      const d = isOverdue ? "⚠️ Overdue" : (t.date || "No Date");
+      
       if (!groups[d]) groups[d] = [];
       groups[d].push(t);
     });
     return groups;
-  }, [tasks]);
+  }, [tasks, hideCompleted, today]);
 
   const sortedDates = useMemo(() => {
     return Object.keys(groupedTasksByDate).sort((a, b) => {
+      if (a === "⚠️ Overdue") return -1;
+      if (b === "⚠️ Overdue") return 1;
       if (a === "No Date") return 1;
       if (b === "No Date") return -1;
       return a.localeCompare(b);
@@ -554,12 +621,15 @@ export default function TodoApp() {
     const mostProductive = byDate.slice().sort((a,b)=>b.count-a.count)[0]?.date || null;
     const leastProductive = byDate.slice().sort((a,b)=>a.count-b.count)[0]?.date || null;
     const tags = collectAllTags(tasks);
+    
+    // CHART FIX: Overdue stacked segments
     const byTag = tags.map((tag: string) => {
       const tagged = collectTasksWithTag(tasks, tag);
       const count = tagged.length;
       const completedCount = tagged.filter(t => t.completed).length;
+      const overdueCount = tagged.filter(t => !t.completed && t.date && t.date < today).length;
       const avgTagProgress = count ? Math.round(tagged.reduce((a,b)=>a+(b.progress||0),0)/count) : 0;
-      return { tag, count, completedCount, avgTagProgress };
+      return { tag, count, completedCount, overdueCount, avgTagProgress };
     });
     return { total, completed, avgProgress, byPriority, byDate, overdue, highPriority, mostProductive, leastProductive, byTag };
   }, [tasks, tasksByDate, today]);
@@ -601,7 +671,13 @@ export default function TodoApp() {
       return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
     }, [analyticsData.byDate, tasksByDate]);
 
-  const byTagDetailed = useMemo(() => (analyticsData.byTag || []).map(t => ({ ...t, remaining: t.count - t.completedCount })), [analyticsData.byTag]);
+  // CHART FIX: Ensure 'remaining' isolates the strictly remaining items
+  const byTagDetailed = useMemo(() => (analyticsData.byTag || []).map(t => ({ 
+      ...t, 
+      remaining: t.count - t.completedCount - t.overdueCount,
+      overdue: t.overdueCount 
+  })), [analyticsData.byTag]);
+  
   const priorityWithPct = useMemo(() => {
     const total = analyticsData.byPriority.reduce((s,p)=>s+p.value,0) || 1;
     return analyticsData.byPriority.map((p,i) => ({ ...p, pct: Math.round((p.value/total)*100), color: Object.values(priorityColor)[i] }));
@@ -614,28 +690,28 @@ export default function TodoApp() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 p-8">
       <div className="max-w-7xl mx-auto space-y-8">
-        <h1 className="text-4xl font-bold text-white">Productivity Dashboard</h1>
+        <div className="flex justify-between items-center flex-wrap gap-4">
+            <h1 className="text-4xl font-bold text-white">Tasks DB</h1>
+            
+            <div className="flex items-center gap-3 bg-slate-800 p-2 rounded-xl border border-slate-700">
+                <Select value={activeProfile} onValueChange={setActiveProfile}>
+                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-40 h-8"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-slate-800 text-white">
+                    {profiles.map(p => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-1 border-l border-slate-600 pl-3">
+                    <Input placeholder="New profile" value={newProfileName} onChange={e => setNewProfileName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addProfile()} className="bg-slate-700 border-slate-600 text-white w-28 h-8 text-xs" />
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-500 h-8" onClick={addProfile}>+</Button>
+                </div>
+                {profiles.length > 1 && (
+                  <Button size="sm" variant="ghost" className="text-red-400 hover:bg-red-900/30 hover:text-red-300 h-8" onClick={() => deleteProfile(activeProfile)}>Delete Profile</Button>
+                )}
+            </div>
+        </div>
 
-        <Card className="bg-slate-800 border border-slate-700 rounded-2xl">
-          <CardContent className="p-6 flex gap-3 flex-wrap items-center">
-            <Select value={activeProfile} onValueChange={setActiveProfile}>
-              <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-48"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-slate-800 text-white">
-                {profiles.map(p => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
-              </SelectContent>
-            </Select>
-
-            <Input placeholder="New profile name" value={newProfileName} onChange={e => setNewProfileName(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-48" />
-            <Button className="bg-blue-600 hover:bg-blue-500" onClick={addProfile}>Add Profile</Button>
-
-            {profiles.length > 1 && (
-              <Button className="bg-red-600 hover:bg-red-500" onClick={() => deleteProfile(activeProfile)}>Delete Current Profile</Button>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="bg-slate-800 border border-slate-700 rounded-2xl">
-          <CardContent className="p-6 flex gap-3 flex-wrap">
+        <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
+          <CardContent className="p-4 flex gap-2 flex-wrap">
             <button className={tabClass(activeTab === "tasks")} onClick={() => setActiveTab("tasks")}>Tasks</button>
             <button className={tabClass(activeTab === "calendar")} onClick={() => setActiveTab("calendar")}>Calendar</button>
             <button className={tabClass(activeTab === "tags")} onClick={() => setActiveTab("tags")}>Tags</button>
@@ -645,34 +721,35 @@ export default function TodoApp() {
         </Card>
 
         {activeTab === "tasks" && (
-          <Card className="bg-slate-800 border border-slate-700 rounded-2xl">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex flex-col gap-3">
+          <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
+            <CardContent className="p-6 space-y-6">
+
+              
+              <div className="flex flex-col gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
                 <div className="flex gap-3 flex-wrap items-center">
-                  <Input placeholder="Task title" value={title} onChange={e => setTitle(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-64" />
-                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-40" />
+                  <Input placeholder="What needs to be done?" value={title} onChange={e => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-full md:w-64" />
+                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-36" />
                   <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-40"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-36"><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-slate-800 text-white">
                       {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
                     </SelectContent>
                   </Select>
-                  <Input placeholder="tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-48" />
+                  <Input placeholder="Tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-48 hidden md:block" />
                   
-                  <div className="flex items-center gap-2 bg-slate-700 px-3 py-2 rounded-md border border-slate-600 cursor-pointer" onClick={() => setIsRecurring(!isRecurring)}>
+                  <div className="flex items-center gap-2 bg-slate-700 px-3 py-2 rounded-md border border-slate-600 cursor-pointer select-none" onClick={() => setIsRecurring(!isRecurring)}>
                     <input type="checkbox" checked={isRecurring} onChange={() => {}} className="accent-blue-500 pointer-events-none" />
                     <span className="text-sm">Recurring</span>
                   </div>
 
-                  <Button className="bg-blue-600 hover:bg-blue-500" onClick={addTask}>Add Task</Button>
+                  <Button className="bg-blue-600 hover:bg-blue-500 w-full md:w-auto font-bold tracking-wide shadow-md" onClick={addTask}>Add Task</Button>
                 </div>
 
-                {/* Recurrence Settings Menu */}
                 <AnimatePresence>
                   {isRecurring && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-700/50 border border-slate-600 p-4 rounded-xl flex gap-4 flex-wrap items-center overflow-hidden">
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-800 border border-slate-600 p-4 rounded-xl flex gap-4 flex-wrap items-center overflow-hidden">
                       <Select value={recFreq} onValueChange={setRecFreq}>
-                        <SelectTrigger className="bg-slate-800 border-slate-600 text-white w-36"><SelectValue placeholder="Frequency" /></SelectTrigger>
+                        <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-36"><SelectValue placeholder="Frequency" /></SelectTrigger>
                         <SelectContent className="bg-slate-800 text-white">
                           <SelectItem value="daily">Daily</SelectItem>
                           <SelectItem value="weekly">Weekly</SelectItem>
@@ -683,9 +760,9 @@ export default function TodoApp() {
                       </Select>
 
                       {['daily', 'weekly', 'monthly', 'yearly'].includes(recFreq) && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 bg-slate-700/50 p-1 px-3 rounded-lg border border-slate-600/50">
                           <span className="text-sm text-slate-300">Every</span>
-                          <Input type="number" min="1" value={recInterval} onChange={e => setRecInterval(Number(e.target.value))} className="bg-slate-800 border-slate-600 text-white w-20 text-center" />
+                          <Input type="number" min="1" value={recInterval} onChange={e => setRecInterval(Number(e.target.value))} className="bg-slate-800 border-slate-600 text-white w-16 h-8 text-center" />
                           <span className="text-sm text-slate-300">
                             {recFreq === 'daily' ? 'days' : recFreq === 'weekly' ? 'weeks' : recFreq === 'monthly' ? 'months' : 'years'}
                           </span>
@@ -695,7 +772,7 @@ export default function TodoApp() {
                       {recFreq === 'weekly' && (
                         <div className="flex gap-1 border-l border-slate-600 pl-4 ml-2">
                            {["S","M","T","W","T","F","S"].map((d, i) => (
-                              <button key={i} onClick={() => toggleDay(i)} className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${recDays.includes(i) ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-600'}`}>
+                              <button key={i} onClick={() => toggleDay(i)} className={`w-8 h-8 rounded-full text-xs font-bold transition-colors ${recDays.includes(i) ? 'bg-blue-500 text-white shadow-md' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
                                 {d}
                               </button>
                            ))}
@@ -703,99 +780,139 @@ export default function TodoApp() {
                       )}
 
                       {recFreq === 'custom_dates' && (
-                        <Input placeholder="e.g. 2026-06-01, 2026-12-25" value={recDatesInput} onChange={e => setRecDatesInput(e.target.value)} className="bg-slate-800 border-slate-600 text-white w-64" />
+                        <Input placeholder="e.g. 2026-06-01, 2026-12-25" value={recDatesInput} onChange={e => setRecDatesInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-64" />
                       )}
 
                       <div className="flex items-center gap-2 ml-auto">
-                        <span className="text-sm text-slate-300">End Date (optional):</span>
-                        <Input type="date" value={recEndDate} onChange={e => setRecEndDate(e.target.value)} className="bg-slate-800 border-slate-600 text-white w-40" />
+                        <span className="text-sm text-slate-400 font-medium">Ends:</span>
+                        <Input type="date" value={recEndDate} onChange={e => setRecEndDate(e.target.value)} className="bg-slate-700 border-slate-600 text-slate-300 w-36 h-9" />
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
 
-              {/* Improvement 1: Render Tasks in grouped date dropdowns */}
-              <div className="space-y-4 mt-6">
-                {sortedDates.length === 0 && <div className="text-slate-400">No tasks yet</div>}
-                
-                {sortedDates.map(dateKey => (
-                  <div key={dateKey} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-sm">
-                    <div
-                      className="p-4 bg-slate-700/60 hover:bg-slate-700 cursor-pointer font-semibold flex justify-between items-center transition-colors"
-                      onClick={() => setExpandedDates(prev => ({ ...prev, [dateKey]: !prev[dateKey] }))}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span 
-                          className="transform transition-transform duration-200 text-xs text-slate-400" 
-                          style={{ transform: expandedDates[dateKey] ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                        >
-                          ▶
-                        </span>
-                        <span className="text-slate-200 text-lg">
-                          {dateKey === today ? `Today (${dateKey})` : dateKey}
-                        </span>
-                      </div>
-                      <span className="text-sm bg-slate-600/80 text-slate-300 px-3 py-1 rounded-full">
-                        {groupedTasksByDate[dateKey].length} tasks
-                      </span>
+              <div className="flex justify-between items-end border-b border-slate-700 pb-2">
+                 <h2 className="text-xl font-bold text-slate-200">Your Tasks</h2>
+                 <div className="flex items-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer select-none" onClick={() => setHideCompleted(!hideCompleted)}>
+                    <input type="checkbox" checked={hideCompleted} onChange={() => {}} className="accent-blue-500 pointer-events-none" />
+                    <span className="text-sm text-slate-300 font-medium">Hide Completed</span>
+                 </div>
+              </div>
+
+              <div className="space-y-4">
+                {sortedDates.length === 0 && (
+                    <div className="text-center text-slate-400 py-10 bg-slate-900/30 rounded-xl border border-dashed border-slate-700">
+                        {hideCompleted ? "No active tasks. You're all caught up!" : "No tasks found. Add one above!"}
                     </div>
-                    
-                    <AnimatePresence>
-                      {expandedDates[dateKey] && (
-                        <motion.div 
-                          initial={{ height: 0, opacity: 0 }} 
-                          animate={{ height: "auto", opacity: 1 }} 
-                          exit={{ height: 0, opacity: 0 }} 
-                          className="overflow-hidden bg-slate-800"
-                        >
-                          <div className="p-4 space-y-3 border-t border-slate-700/50">
-                            {groupedTasksByDate[dateKey].map(task => (
-                              <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                ))}
+                )}
+                
+                {sortedDates.map(dateKey => {
+                  const tasksForThisDate = groupedTasksByDate[dateKey] || [];
+                  const priorityCounts: Record<string, number> = { "4": 0, "3": 0, "2": 0, "1": 0 };
+                  
+                  tasksForThisDate.forEach(t => { 
+                      if (t.priority && priorityCounts[t.priority] !== undefined) {
+                          priorityCounts[t.priority]++; 
+                      }
+                  });
+
+                  const isOverdueGroup = dateKey === "⚠️ Overdue";
+
+                  return (
+                    <div key={dateKey} className={`bg-slate-800 border rounded-xl overflow-hidden shadow-sm transition-colors ${isOverdueGroup ? 'border-red-900/50' : 'border-slate-700'}`}>
+                      <div
+                        className={`p-4 cursor-pointer flex justify-between items-center transition-colors ${isOverdueGroup ? 'bg-red-950/20 hover:bg-red-900/30' : 'bg-slate-700/60 hover:bg-slate-700'}`}
+                        onClick={() => setExpandedDates(prev => ({ ...prev, [dateKey]: !prev[dateKey] }))}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span 
+                            className={`transform transition-transform duration-200 text-xs ${isOverdueGroup ? 'text-red-400' : 'text-slate-400'}`}
+                            style={{ transform: expandedDates[dateKey] ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                          >
+                            ▶
+                          </span>
+                          <span className={`text-lg font-bold ${isOverdueGroup ? 'text-red-400' : 'text-slate-200'}`}>
+                            {dateKey === today ? `Today (${dateKey})` : dateKey}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            {Object.entries(priorityCounts)
+                                .sort(([a], [b]) => Number(b) - Number(a))
+                                .map(([p, count]) => count > 0 ? (
+                                <span key={p} className={`text-xs border text-slate-200 px-2 py-1 rounded-md flex items-center gap-1 shadow-sm ${isOverdueGroup ? 'bg-red-950/50 border-red-900/50' : 'bg-slate-800/80 border-slate-600'}`} title={priorities.find(pr=>pr.value===p)?.label}>
+                                    <span>{priorityIcon[p as keyof typeof priorityIcon]}</span>
+                                    <span className="font-medium">{count}</span>
+                                </span>
+                            ) : null)}
+                            
+                            <span className={`text-sm text-white font-bold px-3 py-1 rounded-full ml-1 ${isOverdueGroup ? 'bg-red-600' : 'bg-slate-600'}`}>
+                              {tasksForThisDate.length}
+                            </span>
+                        </div>
+                      </div>
+                      
+                      <AnimatePresence>
+                        {expandedDates[dateKey] && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }} 
+                            animate={{ height: "auto", opacity: 1 }} 
+                            exit={{ height: 0, opacity: 0 }} 
+                            className="overflow-hidden bg-slate-800"
+                          >
+                            <div className="p-4 space-y-3 border-t border-slate-700/50 bg-slate-900/20">
+                              {tasksForThisDate.map(task => (
+                                <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
         )}
 
         {activeTab === "calendar" && (
-          <Card className="bg-slate-800 border border-slate-700 rounded-2xl">
+          <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
             <CardContent className="p-6 space-y-6">
               <div className="flex justify-between items-center">
-                <Button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}>Previous</Button>
-                <div className="text-xl font-semibold">{currentMonth.toLocaleString("default", { month: "long" })} {currentMonth.getFullYear()}</div>
-                <Button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}>Next</Button>
+                <Button variant="outline" className="border-slate-600 bg-slate-700 text-white hover:bg-slate-600" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}>Previous</Button>
+                <div className="text-2xl font-bold tracking-wide text-slate-100">{currentMonth.toLocaleString("default", { month: "long" })} {currentMonth.getFullYear()}</div>
+                <Button variant="outline" className="border-slate-600 bg-slate-700 text-white hover:bg-slate-600" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}>Next</Button>
               </div>
 
-              <div className="grid grid-cols-7 gap-2 text-center text-sm font-semibold text-slate-400">
+              <div className="grid grid-cols-7 gap-2 text-center text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">
                 {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d}>{d}</div>)}
               </div>
 
               <div className="grid grid-cols-7 gap-2">
                 {calendarDays.map((day, idx) => {
-                  if (!day) return <div key={idx}></div>;
+                  if (!day) return <div key={idx} className="bg-slate-900/30 rounded-xl border border-dashed border-slate-700/30"></div>;
                   const iso = toISODate(day);
+                  const isToday = iso === today;
                   const dayTasks = tasksByDate[iso] || [];
                   const avg = dayTasks.length ? dayTasks.reduce((a,b)=>a+(b.progress||0),0)/dayTasks.length : 0;
                   const bg = avg === 100 ? "bg-green-600" : avg > 0 ? "bg-yellow-600" : dayTasks.length ? "bg-red-600" : "bg-slate-700";
+                  
                   return (
                     <div 
                       key={iso} 
                       onClick={() => { 
-                        // Automatically expand the chosen date when clicked from calendar, and navigate to tasks
                         setExpandedDates(prev => ({ ...prev, [iso]: true })); 
                         setActiveTab("tasks"); 
                       }} 
-                      className={`p-3 rounded-xl cursor-pointer ${bg} hover:opacity-80 transition-opacity`}
+                      className={`p-3 min-h-[80px] flex flex-col rounded-xl cursor-pointer ${bg} hover:opacity-80 transition-all ${isToday ? 'ring-4 ring-blue-500 ring-offset-4 ring-offset-slate-800 shadow-2xl scale-[1.05] z-10' : 'shadow-md border border-white/5'}`}
                     >
-                      {day.getDate()}
-                      {dayTasks.length > 0 && <div className="text-xs mt-1">{dayTasks.length} tasks</div>}
+                      <div className="flex justify-between items-start mb-auto">
+                          <span className={`font-bold text-lg ${isToday ? 'text-white drop-shadow-md' : 'text-slate-100'}`}>{day.getDate()}</span>
+                          {isToday && <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded shadow-sm uppercase tracking-widest font-black">Today</span>}
+                      </div>
+                      {dayTasks.length > 0 && <div className="text-xs font-bold text-white/95 bg-black/20 px-2 py-1 rounded mt-2 text-center">{dayTasks.length} tasks</div>}
                     </div>
                   );
                 })}
@@ -805,23 +922,35 @@ export default function TodoApp() {
         )}
 
         {activeTab === "tags" && (
-          <Card className="bg-slate-800 border border-slate-700 rounded-2xl">
+          <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
             <CardContent className="p-6 space-y-4">
-              <div className="text-lg font-semibold">Tags</div>
-              <div className="grid md:grid-cols-3 gap-4">
-                {allTags.length === 0 && <div className="text-slate-400">No tags yet</div>}
+              <div className="text-xl font-bold border-b border-slate-700 pb-2">Tag Management</div>
+              <div className="grid md:grid-cols-3 gap-4 mt-4">
+                {allTags.length === 0 && <div className="text-slate-400">No tags yet. Add tags to tasks to categorize them.</div>}
                 {allTags.map((tag: string) => (
-                  <div key={tag} className="bg-slate-700 p-3 rounded">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium text-slate-100">{tag}</div>
-                      <div className="text-sm text-slate-300">{collectTasksWithTag(tasks, tag).length} tasks</div>
+                  <div key={tag} className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
+                    <div className="flex items-center justify-between mb-3 border-b border-slate-700/50 pb-2">
+                      <div className="font-bold text-lg text-indigo-300">#{tag}</div>
+                      <div className="text-sm bg-indigo-900/40 text-indigo-200 px-2 py-1 rounded-md font-medium">{collectTasksWithTag(tasks, tag).length} tasks</div>
                     </div>
-                    <div className="mt-2 space-y-2">
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                       {collectTasksWithTag(tasks, tag).map(t => (
-                        <details key={t.id} className="bg-slate-800 p-2 rounded">
-                          <summary className="cursor-pointer text-slate-200">{t.title} <span className="text-xs text-slate-400">{t.date}</span></summary>
-                          <div className="mt-2 text-sm text-slate-300">Priority: {priorities.find(p=>p.value===t.priority)?.label || t.priority}</div>
-                          <div className="text-sm text-slate-300">Progress: {t.progress || 0}%</div>
+                        <details key={t.id} className="bg-slate-800 border border-slate-700 p-2 rounded-lg group">
+                          <summary className="cursor-pointer text-slate-200 font-medium list-none flex justify-between items-center">
+                              <span className={t.completed ? 'line-through text-slate-400' : ''}>{t.title}</span>
+                              <span className="text-xs text-slate-400 group-open:hidden">{t.date}</span>
+                          </summary>
+                          <div className="mt-3 text-sm text-slate-300 space-y-1 bg-slate-900/50 p-2 rounded border border-slate-700/50">
+                            <div><span className="text-slate-400">Date:</span> {t.date}</div>
+                            <div><span className="text-slate-400">Priority:</span> {priorities.find(p=>p.value===t.priority)?.label || t.priority}</div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-slate-400">Progress:</span> 
+                                <div className="flex-1 bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                                    <div className="bg-blue-500 h-full" style={{width: `${t.progress||0}%`}}></div>
+                                </div>
+                                <span className="text-xs">{t.progress || 0}%</span>
+                            </div>
+                          </div>
                         </details>
                       ))}
                     </div>
@@ -833,10 +962,11 @@ export default function TodoApp() {
         )}
 
         {activeTab === "find" && (
-          <Card className="bg-slate-800 border border-slate-700 rounded-2xl">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex gap-3 items-center flex-wrap">
-                <Input placeholder="Search tasks" value={findQuery} onChange={e => setFindQuery(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-72" />
+          <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
+            <CardContent className="p-6 space-y-6">
+              <div className="text-xl font-bold border-b border-slate-700 pb-2">Advanced Search</div>
+              <div className="flex gap-3 items-center flex-wrap bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+                <Input placeholder="Search titles or comments..." value={findQuery} onChange={e => setFindQuery(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full md:w-72" />
                 <Select value={findPriority} onValueChange={setFindPriority}>
                   <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-40"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-slate-800 text-white">
@@ -854,24 +984,49 @@ export default function TodoApp() {
                 <Select value={findCompleted} onValueChange={setFindCompleted}>
                   <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-36"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-slate-800 text-white">
-                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="all">All Statuses</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
                   </SelectContent>
                 </Select>
-                <Input type="date" value={findDateFrom} onChange={e=>setFindDateFrom(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
-                <Input type="date" value={findDateTo} onChange={e=>setFindDateTo(e.target.value)} className="bg-slate-700 border-slate-600 text-white" />
-                <Button className="bg-blue-600 hover:bg-blue-500" onClick={() => setActiveTab('find')}>Search</Button>
+                <Input type="date" value={findDateFrom} onChange={e=>setFindDateFrom(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-36" title="From Date" />
+                <Input type="date" value={findDateTo} onChange={e=>setFindDateTo(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-36" title="To Date" />
               </div>
 
               <div className="space-y-3">
-                {findResults.length === 0 && <div className="text-slate-400">No results</div>}
+                {findResults.length === 0 ? (
+                    <div className="text-center text-slate-400 py-8 bg-slate-900/30 rounded-xl border border-dashed border-slate-700">No results found matching your criteria.</div>
+                ) : (
+                    <div className="text-sm text-slate-400 font-medium mb-2 pl-1">Found {findResults.length} task(s)</div>
+                )}
                 {findResults.map(t => (
-                  <details key={t.id} className="bg-slate-800 p-3 rounded">
-                    <summary className="cursor-pointer text-slate-200">{t.title} <span className="text-xs text-slate-400">{t.date}</span></summary>
-                    <div className="mt-2 text-sm text-slate-300">Priority: {priorities.find(p=>p.value===t.priority)?.label || t.priority}</div>
-                    <div className="text-sm text-slate-300">Progress: {t.progress || 0}%</div>
-                    <div className="text-sm text-slate-300">Tags: {(t.tags||[]).join(', ')}</div>
+                  <details key={t.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl group hover:border-slate-500 transition-colors">
+                    <summary className="cursor-pointer text-slate-200 font-medium list-none flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300 group-open:hidden">View Details</span>
+                            <span className={`text-lg ${t.completed ? 'line-through text-slate-400' : ''}`}>{t.title}</span>
+                        </div>
+                        <span className="text-sm font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded">{t.date}</span>
+                    </summary>
+                    <div className="mt-4 grid md:grid-cols-2 gap-4 text-sm text-slate-300 bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
+                        <div className="space-y-2">
+                            <div><span className="text-slate-500 font-medium w-20 inline-block">Status:</span> {t.completed ? <span className="text-green-400 font-bold">Completed</span> : <span className="text-yellow-400 font-bold">Active</span>}</div>
+                            <div><span className="text-slate-500 font-medium w-20 inline-block">Priority:</span> {priorities.find(p=>p.value===t.priority)?.label || t.priority}</div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-slate-500 font-medium w-20 inline-block">Progress:</span> 
+                                <div className="flex-1 max-w-[150px] bg-slate-700 h-2 rounded-full overflow-hidden">
+                                    <div className="bg-blue-500 h-full" style={{width: `${t.progress||0}%`}}></div>
+                                </div>
+                                <span className="font-mono text-xs">{t.progress || 0}%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-slate-500 font-medium mb-1">Tags:</div>
+                            <div className="flex gap-1 flex-wrap">
+                                {(t.tags||[]).length > 0 ? (t.tags||[]).map((tag: string) => <span key={tag} className="bg-indigo-900/40 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded text-xs">#{tag}</span>) : <span className="text-slate-600 italic">None</span>}
+                            </div>
+                        </div>
+                    </div>
                   </details>
                 ))}
               </div>
@@ -880,131 +1035,152 @@ export default function TodoApp() {
         )}
 
         {activeTab === "analytics" && (
-          <Card className="bg-slate-800 border border-slate-700 rounded-2xl">
+          <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
             <CardContent className="p-6 space-y-6">
-              <div className="grid grid-cols-4 gap-6 text-center">
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <div className="text-3xl font-bold">{analyticsData.total}</div>
-                  <div className="text-slate-400">Total Tasks</div>
+              
+              <div className="text-xl font-bold border-b border-slate-700 pb-2">Overview</div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 text-center">
+                <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
+                  <div className="text-4xl font-black text-blue-400">{analyticsData.total}</div>
+                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-xs">Total Tasks</div>
                 </div>
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <div className="text-3xl font-bold">{analyticsData.completed}</div>
-                  <div className="text-slate-400">Completed</div>
+                <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
+                  <div className="text-4xl font-black text-green-400">{analyticsData.completed}</div>
+                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-xs">Completed</div>
                 </div>
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <div className="text-3xl font-bold">{analyticsData.avgProgress}%</div>
-                  <div className="text-slate-400">Average Progress</div>
+                <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
+                  <div className="text-4xl font-black text-indigo-400">{analyticsData.avgProgress}%</div>
+                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-xs">Avg Progress</div>
                 </div>
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <div className="text-3xl font-bold">{analyticsData.overdue}</div>
-                  <div className="text-slate-400">Overdue</div>
+                <div className="bg-slate-900/50 border border-red-900/50 p-4 rounded-xl shadow-sm relative overflow-hidden">
+                  <div className="absolute inset-0 bg-red-500/5"></div>
+                  <div className="text-4xl font-black text-red-500 relative z-10">{analyticsData.overdue}</div>
+                  <div className="text-red-400/80 font-medium mt-1 uppercase tracking-wider text-xs relative z-10">Overdue</div>
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <div className="text-lg font-semibold mb-2">Tasks Over Time</div>
-                  <div style={{ height: 420 }}>
+              <div className="grid lg:grid-cols-2 gap-6">
+                <div className="bg-slate-900/30 border border-slate-700 p-5 rounded-xl">
+                  <div className="text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-blue-500 rounded-full inline-block"></span> Tasks Over Time</div>
+                  <div style={{ height: 350 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={byDateDetailed} margin={{ top: 10, right: 30, left: 0, bottom: 40 }}>
-                        <CartesianGrid stroke="#334155" />
-                        <XAxis dataKey="date" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={60} />
-                        <YAxis yAxisId="left" label={{ value: 'Tasks', angle: -90, position: 'insideLeft' }} />
-                        <YAxis yAxisId="right" orientation="right" label={{ value: '% Completed', angle: -90, position: 'insideRight' }} />
-                        <Tooltip />
+                        <CartesianGrid stroke="#334155" strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} angle={-45} textAnchor="end" height={60} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="left" tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="right" orientation="right" tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                        <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc'}} />
                         <BarChart data={byDateDetailed}>
-                          <Bar dataKey="count" fill="#3b82f6" />
+                          <Bar dataKey="count" fill="#3b82f6" radius={[4,4,0,0]} />
                         </BarChart>
-                        <Line type="monotone" dataKey="completedPct" stroke="#22c55e" strokeWidth={3} dot />
+                        <Line type="monotone" dataKey="completedPct" stroke="#22c55e" strokeWidth={3} dot={{r: 4, fill: '#1e293b', strokeWidth: 2}} activeDot={{r: 6}} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="mt-3 text-sm text-slate-400">Blue = number of tasks that day. Green line = percent completed that day.</div>
+                  <div className="mt-2 text-xs font-medium text-slate-400 flex justify-center gap-4">
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-500 rounded-sm inline-block"></span> Total Tasks</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-1 bg-green-500 rounded-full inline-block"></span> % Completed</span>
+                  </div>
                 </div>
 
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <div className="text-lg font-semibold mb-2">Tag Insights (Completed vs Remaining)</div>
-                  <div style={{ height: 420 }}>
+                <div className="bg-slate-900/30 border border-slate-700 p-5 rounded-xl">
+                  <div className="text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-indigo-500 rounded-full inline-block"></span> Tag Insights</div>
+                  <div style={{ height: 350 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={byTagDetailed} margin={{ top: 10, right: 20, left: 0, bottom: 80 }}>
-                        <CartesianGrid stroke="#334155" />
-                        <XAxis dataKey="tag" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={70} />
-                        <YAxis />
-                        <Tooltip formatter={(value, name) => [`${value}`, name]} />
-                        <Bar dataKey="completedCount" stackId="a" fill="#16a34a" name="Completed" />
-                        <Bar dataKey="remaining" stackId="a" fill="#f59e0b" name="Remaining" />
+                        <CartesianGrid stroke="#334155" strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="tag" tick={{ fontSize: 12, fill: '#94a3b8' }} angle={-45} textAnchor="end" height={70} axisLine={false} tickLine={false} />
+                        <YAxis tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                        <Tooltip cursor={{fill: '#334155', opacity: 0.4}} contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc'}} />
+                        
+                        {/* CHART FIX: Added Overdue mapping. 
+                            Removed radii from inner stacked items to ensure smooth stacking appearance. */}
+                        <Bar dataKey="completedCount" stackId="a" fill="#22c55e" name="Completed" />
+                        <Bar dataKey="remaining" stackId="a" fill="#eab308" name="Remaining" />
+                        <Bar dataKey="overdue" stackId="a" fill="#ef4444" name="Overdue" radius={[4,4,0,0]} />
+                        
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="mt-3 text-sm text-slate-400">Stacked bars show how much work per tag is done vs remaining.</div>
+                  
+                  {/* CHART FIX: Custom legend updated with the Overdue color chip */}
+                  <div className="mt-2 text-xs font-medium text-slate-400 flex justify-center gap-4">
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm inline-block"></span> Completed</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 bg-yellow-500 rounded-sm inline-block"></span> Remaining</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-500 rounded-sm inline-block"></span> Overdue</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="bg-slate-700 p-4 rounded-lg">
-                <div className="text-lg font-semibold mb-2">Priority Breakdown</div>
-                <div style={{ height: 360 }}>
-                  <ResponsiveContainer width="100%" height={260}>
-                      <PieChart>
-                        <Pie
-                          data={priorityWithPct}
-                          dataKey="value"
-                          nameKey="name"
-                          outerRadius={120}
-                          innerRadius={60}
-                          labelLine={false}
-                          label={({ name = "", pct = 0 }: any) =>
-                            `${name.split(" ")[1] || name} (${pct}%)`
-                          }
-                        >
-                          {priorityWithPct.map((p, i) => (
-                            <Cell key={i} fill={p.color} />
-                          ))}
-                        </Pie>
-
-                        <Tooltip formatter={(value) => `${value} tasks`} />
-                      </PieChart>
-                    </ResponsiveContainer>
-
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
-                  {priorityWithPct.map((p, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span style={{ width: 12, height: 12, background: p.color, display: 'inline-block', borderRadius: 3 }} />
-                      <div className="flex-1 text-slate-200">{p.name}</div>
-                      <div className="text-slate-400">{p.value} ({p.pct}%)</div>
+              <div className="grid lg:grid-cols-3 gap-6">
+                  <div className="bg-slate-900/30 border border-slate-700 p-5 rounded-xl col-span-1">
+                    <div className="text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-orange-500 rounded-full inline-block"></span> Priorities</div>
+                    <div style={{ height: 220 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={priorityWithPct}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={90}
+                              innerRadius={60}
+                              paddingAngle={2}
+                              stroke="none"
+                            >
+                              {priorityWithPct.map((p, i) => (
+                                <Cell key={i} fill={p.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc'}} formatter={(value) => `${value} tasks`} />
+                          </PieChart>
+                        </ResponsiveContainer>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <div className="text-lg font-semibold mb-2">Top Upcoming Tasks</div>
-                  <div className="space-y-2 max-h-44 overflow-y-auto">
-                    {tasks.filter(t => !t.completed && t.date && t.date >= today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8).map(t => (
-                      <div key={t.id} className="flex items-center justify-between bg-slate-800 p-2 rounded">
-                        <div>
-                          <div className="text-sm text-slate-200">{t.title}</div>
-                          <div className="text-xs text-slate-400">{t.date}</div>
+                    <div className="mt-4 space-y-2">
+                      {priorityWithPct.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700/50">
+                          <div className="flex items-center gap-2">
+                              <span style={{ width: 10, height: 10, background: p.color, display: 'inline-block', borderRadius: 2 }} />
+                              <span className="text-sm font-medium text-slate-200">{p.name.replace(/[^A-Za-z]/g, '').trim()}</span>
+                          </div>
+                          <span className="text-sm text-slate-400 font-mono">{p.value} ({p.pct}%)</span>
                         </div>
-                        <div style={{ width: 10, height: 10, background: priorityColor[t.priority as keyof typeof priorityColor] || '#64748b', borderRadius: 4 }} />
-                      </div>
-                    ))}
-                    {tasks.filter(t => !t.completed && t.date && t.date >= today).length === 0 && <div className="text-sm text-slate-400">No upcoming tasks</div>}
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <div className="text-lg font-semibold mb-2">Key Metrics</div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="p-2 bg-slate-800 rounded">Completion Rate<div className="font-bold">{analyticsData.total ? Math.round((analyticsData.completed/analyticsData.total)*100) : 0}%</div></div>
-                    <div className="p-2 bg-slate-800 rounded">High Priority<div className="font-bold">{analyticsData.highPriority}</div></div>
-                    <div className="p-2 bg-slate-800 rounded">Overdue<div className="font-bold text-red-400">{analyticsData.overdue}</div></div>
-                    <div className="p-2 bg-slate-800 rounded">Average Progress<div className="font-bold">{analyticsData.avgProgress}%</div></div>
-                    <div className="p-2 bg-slate-800 rounded">Distinct Tags<div className="font-bold">{analyticsData.byTag.length}</div></div>
-                    <div className="p-2 bg-slate-800 rounded">Top Tag Avg Progress<div className="font-bold">{analyticsData.byTag.slice().sort((a,b)=>b.avgTagProgress-a.avgTagProgress)[0]?.avgTagProgress || 0}%</div></div>
+                  <div className="bg-slate-900/30 border border-slate-700 p-5 rounded-xl col-span-1 lg:col-span-2">
+                    <div className="text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-purple-500 rounded-full inline-block"></span> Upcoming & Immediate Focus</div>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                      {tasks.filter(t => !t.completed && t.date && t.date >= today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8).map(t => (
+                        <div key={t.id} className="flex items-center justify-between bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-slate-500 transition-colors">
+                          <div>
+                            <div className="font-semibold text-slate-200 text-base">{t.title}</div>
+                            <div className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                                📅 {t.date} 
+                                {t.date === today && <span className="bg-blue-500/20 text-blue-400 px-1.5 py-0 rounded text-[10px] uppercase font-bold tracking-wider">Today</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                  <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">Priority</div>
+                                  <div className="flex items-center gap-1">
+                                      <span style={{ width: 8, height: 8, background: priorityColor[t.priority as keyof typeof priorityColor] || '#64748b', borderRadius: '50%' }} />
+                                      <span className="text-sm font-medium text-slate-300">{priorities.find(p=>p.value===t.priority)?.label.replace(/[^A-Za-z]/g, '').trim()}</span>
+                                  </div>
+                              </div>
+                          </div>
+                        </div>
+                      ))}
+                      {tasks.filter(t => !t.completed && t.date && t.date >= today).length === 0 && (
+                          <div className="text-center py-10 bg-slate-800/50 rounded-xl border border-dashed border-slate-700 text-slate-400">
+                              No upcoming tasks on the radar. Relax!
+                          </div>
+                      )}
+                    </div>
                   </div>
-                </div>
               </div>
 
             </CardContent>
