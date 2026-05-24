@@ -236,10 +236,10 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
               type="checkbox"
               checked={!!task.completed}
               onChange={e => { e.stopPropagation(); updateSelf({ completed: !task.completed }); }}
-              className="mt-1 w-4 h-4 accent-blue-500"
+              className="mt-1 w-4 h-4 accent-blue-500 flex-shrink-0"
             />
-            <div className="flex-1">
-              <div className={`font-medium ${task.completed ? "line-through text-slate-400" : "text-white"}`}>
+            <div className="flex-1 min-w-0">
+              <div className={`font-medium break-words ${task.completed ? "line-through text-slate-400" : "text-white"}`}>
                 
                 {isEditingTitle ? (
                     <input 
@@ -272,7 +272,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
               <div className="mt-2 flex gap-2 flex-wrap">
                 {(task.tags || []).map((tag: string) => (
                   <div key={tag} className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded flex items-center gap-2">
-                    <span>{tag}</span>
+                    <span className="truncate max-w-[100px]">{tag}</span>
                     <button onClick={e => { e.stopPropagation(); removeTag(tag); }} className="text-xs text-red-400 hover:text-red-300">✕</button>
                   </div>
                 ))}
@@ -281,7 +281,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
           </div>
           <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
             <Select value={task.priority} onValueChange={v => updateSelf({ priority: v })}>
-              <SelectTrigger className="bg-slate-600 border-slate-500 text-white w-32 md:w-36 h-8 text-xs md:text-sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="bg-slate-600 border-slate-500 text-white w-28 md:w-36 h-8 text-xs md:text-sm"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-slate-800 text-white">
                 {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
               </SelectContent>
@@ -315,19 +315,19 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
                 {(task.subtasks || []).map((st: any) => (
                   <div key={st.id} className="bg-slate-800 border border-slate-700 rounded-lg p-2 mb-2">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <input type="checkbox" checked={!!st.completed} onChange={() => updateChild({ ...st, completed: !st.completed })} className="accent-blue-500" />
-                        <div className={st.completed ? "line-through text-slate-400" : "text-slate-200"}>{st.title}</div>
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <input type="checkbox" checked={!!st.completed} onChange={() => updateChild({ ...st, completed: !st.completed })} className="accent-blue-500 flex-shrink-0" />
+                        <div className={`truncate text-sm ${st.completed ? "line-through text-slate-400" : "text-slate-200"}`}>{st.title}</div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 md:gap-2">
                         <Select value={st.priority} onValueChange={v => updateChild({ ...st, priority: v })}>
-                          <SelectTrigger className="bg-slate-600 border-slate-500 text-white w-28 h-7 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="bg-slate-600 border-slate-500 text-white w-20 md:w-28 h-7 text-xs px-1 md:px-2"><SelectValue /></SelectTrigger>
                           <SelectContent className="bg-slate-800 text-white">
                             {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
                           </SelectContent>
                         </Select>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs px-2 bg-gray-700 hover:bg-gray-600" onClick={() => toggleChildOpen(st.id)}>{openChildren[st.id] ? "Hide" : "Open"}</Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-red-400 hover:text-red-300 hover:bg-red-900/30" onClick={() => deleteChild(st.id)}>✕</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs px-1 md:px-2 bg-gray-700 hover:bg-gray-600" onClick={() => toggleChildOpen(st.id)}>{openChildren[st.id] ? "Hide" : "Open"}</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs px-1 md:px-2 text-red-400 hover:text-red-300 hover:bg-red-900/30" onClick={() => deleteChild(st.id)}>✕</Button>
                       </div>
                     </div>
                     {openChildren[st.id] && (
@@ -336,7 +336,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
                   </div>
                 ))}
                 <div className="flex gap-2">
-                  <Input placeholder="Add subtask" value={childTitle} onChange={e => setChildTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addChild()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm" />
+                  <Input placeholder="Add subtask" value={childTitle} onChange={e => setChildTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addChild()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm flex-1" />
                   <Button size="sm" className="bg-blue-600 hover:bg-blue-500 h-8" onClick={addChild}>Add</Button>
                 </div>
               </div>
@@ -346,18 +346,18 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
                   <div className="space-y-2">
                     <div className="text-sm font-semibold text-slate-200">Comments</div>
                     <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
-                        {(task.comments || []).map((c: string, i: number) => (<div key={i} className="text-sm bg-slate-700/50 p-2 rounded text-slate-200">{c}</div>))}
+                        {(task.comments || []).map((c: string, i: number) => (<div key={i} className="text-sm bg-slate-700/50 p-2 rounded text-slate-200 break-words">{c}</div>))}
                     </div>
                     <div className="flex gap-2">
-                      <Input placeholder="Add remark" value={comment} onChange={e => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addComment()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm" />
+                      <Input placeholder="Add remark" value={comment} onChange={e => setComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addComment()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm flex-1" />
                       <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 h-8" onClick={addComment}>Add</Button>
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <div className="text-sm font-semibold text-slate-200">Tags</div>
-                    <div className="flex gap-2 items-center flex-wrap">
-                      <Input placeholder="tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTag()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm" />
+                    <div className="flex gap-2 items-center">
+                      <Input placeholder="tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTag()} className="bg-slate-700 border-slate-600 text-white h-8 text-sm flex-1" />
                       <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 h-8" onClick={addTag}>Add</Button>
                     </div>
                   </div>
@@ -622,7 +622,6 @@ export default function TodoApp() {
     const leastProductive = byDate.slice().sort((a,b)=>a.count-b.count)[0]?.date || null;
     const tags = collectAllTags(tasks);
     
-    // CHART FIX: Overdue stacked segments
     const byTag = tags.map((tag: string) => {
       const tagged = collectTasksWithTag(tasks, tag);
       const count = tagged.length;
@@ -634,7 +633,7 @@ export default function TodoApp() {
     return { total, completed, avgProgress, byPriority, byDate, overdue, highPriority, mostProductive, leastProductive, byTag };
   }, [tasks, tasksByDate, today]);
 
-  const tabClass = (active: boolean) => `px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${active ? "bg-blue-500 text-white shadow-lg scale-105" : "bg-gray-700 text-gray-200 hover:bg-gray-600"}`;
+  const tabClass = (active: boolean) => `px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 whitespace-nowrap flex-1 md:flex-none text-center ${active ? "bg-blue-500 text-white shadow-lg md:scale-105" : "bg-gray-700 text-gray-200 hover:bg-gray-600"}`;
   const allTags = useMemo(() => collectAllTags(tasks), [tasks]);
 
   const flattenedTasks = useMemo(() => {
@@ -671,7 +670,6 @@ export default function TodoApp() {
       return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
     }, [analyticsData.byDate, tasksByDate]);
 
-  // CHART FIX: Ensure 'remaining' isolates the strictly remaining items
   const byTagDetailed = useMemo(() => (analyticsData.byTag || []).map(t => ({ 
       ...t, 
       remaining: t.count - t.completedCount - t.overdueCount,
@@ -688,30 +686,31 @@ export default function TodoApp() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 p-3 sm:p-8">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
+        
         <div className="flex justify-between items-center flex-wrap gap-4">
-            <h1 className="text-4xl font-bold text-white">Tasks DB</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white">Tasks DB</h1>
             
-            <div className="flex items-center gap-3 bg-slate-800 p-2 rounded-xl border border-slate-700">
+            <div className="flex items-center gap-2 sm:gap-3 bg-slate-800 p-2 rounded-xl border border-slate-700 w-full md:w-auto">
                 <Select value={activeProfile} onValueChange={setActiveProfile}>
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-40 h-8"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white flex-1 md:w-40 h-8"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-slate-800 text-white">
                     {profiles.map(p => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
                   </SelectContent>
                 </Select>
-                <div className="flex items-center gap-1 border-l border-slate-600 pl-3">
-                    <Input placeholder="New profile" value={newProfileName} onChange={e => setNewProfileName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addProfile()} className="bg-slate-700 border-slate-600 text-white w-28 h-8 text-xs" />
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-500 h-8" onClick={addProfile}>+</Button>
+                <div className="flex items-center gap-1 border-l border-slate-600 pl-2 sm:pl-3">
+                    <Input placeholder="New profile" value={newProfileName} onChange={e => setNewProfileName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addProfile()} className="bg-slate-700 border-slate-600 text-white w-24 sm:w-28 h-8 text-xs" />
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-500 h-8 px-2 sm:px-3" onClick={addProfile}>+</Button>
                 </div>
                 {profiles.length > 1 && (
-                  <Button size="sm" variant="ghost" className="text-red-400 hover:bg-red-900/30 hover:text-red-300 h-8" onClick={() => deleteProfile(activeProfile)}>Delete Profile</Button>
+                  <Button size="sm" variant="ghost" className="text-red-400 hover:bg-red-900/30 hover:text-red-300 h-8 px-2" onClick={() => deleteProfile(activeProfile)}>🗑️</Button>
                 )}
             </div>
         </div>
 
         <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
-          <CardContent className="p-4 flex gap-2 flex-wrap">
+          <CardContent className="p-3 sm:p-4 flex gap-2 flex-wrap overflow-x-auto scrollbar-hide">
             <button className={tabClass(activeTab === "tasks")} onClick={() => setActiveTab("tasks")}>Tasks</button>
             <button className={tabClass(activeTab === "calendar")} onClick={() => setActiveTab("calendar")}>Calendar</button>
             <button className={tabClass(activeTab === "tags")} onClick={() => setActiveTab("tags")}>Tags</button>
@@ -722,22 +721,21 @@ export default function TodoApp() {
 
         {activeTab === "tasks" && (
           <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
-            <CardContent className="p-6 space-y-6">
-
+            <CardContent className="p-4 sm:p-6 space-y-6">
               
               <div className="flex flex-col gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
                 <div className="flex gap-3 flex-wrap items-center">
-                  <Input placeholder="What needs to be done?" value={title} onChange={e => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-full md:w-64" />
-                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-36" />
+                  <Input placeholder="What needs to be done?" value={title} onChange={e => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-full md:w-auto md:flex-1" />
+                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full sm:w-36" />
                   <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-36"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-36"><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-slate-800 text-white">
                       {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
                     </SelectContent>
                   </Select>
-                  <Input placeholder="Tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-48 hidden md:block" />
+                  <Input placeholder="Tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-full md:w-48 hidden md:block" />
                   
-                  <div className="flex items-center gap-2 bg-slate-700 px-3 py-2 rounded-md border border-slate-600 cursor-pointer select-none" onClick={() => setIsRecurring(!isRecurring)}>
+                  <div className="flex items-center gap-2 bg-slate-700 px-3 py-2 rounded-md border border-slate-600 cursor-pointer select-none w-full sm:w-auto" onClick={() => setIsRecurring(!isRecurring)}>
                     <input type="checkbox" checked={isRecurring} onChange={() => {}} className="accent-blue-500 pointer-events-none" />
                     <span className="text-sm">Recurring</span>
                   </div>
@@ -749,7 +747,7 @@ export default function TodoApp() {
                   {isRecurring && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-800 border border-slate-600 p-4 rounded-xl flex gap-4 flex-wrap items-center overflow-hidden">
                       <Select value={recFreq} onValueChange={setRecFreq}>
-                        <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-36"><SelectValue placeholder="Frequency" /></SelectTrigger>
+                        <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-36"><SelectValue placeholder="Frequency" /></SelectTrigger>
                         <SelectContent className="bg-slate-800 text-white">
                           <SelectItem value="daily">Daily</SelectItem>
                           <SelectItem value="weekly">Weekly</SelectItem>
@@ -780,12 +778,12 @@ export default function TodoApp() {
                       )}
 
                       {recFreq === 'custom_dates' && (
-                        <Input placeholder="e.g. 2026-06-01, 2026-12-25" value={recDatesInput} onChange={e => setRecDatesInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-64" />
+                        <Input placeholder="e.g. 2026-06-01, 2026-12-25" value={recDatesInput} onChange={e => setRecDatesInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full sm:w-64" />
                       )}
 
-                      <div className="flex items-center gap-2 ml-auto">
+                      <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
                         <span className="text-sm text-slate-400 font-medium">Ends:</span>
-                        <Input type="date" value={recEndDate} onChange={e => setRecEndDate(e.target.value)} className="bg-slate-700 border-slate-600 text-slate-300 w-36 h-9" />
+                        <Input type="date" value={recEndDate} onChange={e => setRecEndDate(e.target.value)} className="bg-slate-700 border-slate-600 text-slate-300 flex-1 sm:w-36 h-9" />
                       </div>
                     </motion.div>
                   )}
@@ -832,7 +830,7 @@ export default function TodoApp() {
                           >
                             ▶
                           </span>
-                          <span className={`text-lg font-bold ${isOverdueGroup ? 'text-red-400' : 'text-slate-200'}`}>
+                          <span className={`text-base sm:text-lg font-bold ${isOverdueGroup ? 'text-red-400' : 'text-slate-200'}`}>
                             {dateKey === today ? `Today (${dateKey})` : dateKey}
                           </span>
                         </div>
@@ -841,7 +839,7 @@ export default function TodoApp() {
                             {Object.entries(priorityCounts)
                                 .sort(([a], [b]) => Number(b) - Number(a))
                                 .map(([p, count]) => count > 0 ? (
-                                <span key={p} className={`text-xs border text-slate-200 px-2 py-1 rounded-md flex items-center gap-1 shadow-sm ${isOverdueGroup ? 'bg-red-950/50 border-red-900/50' : 'bg-slate-800/80 border-slate-600'}`} title={priorities.find(pr=>pr.value===p)?.label}>
+                                <span key={p} className={`text-xs border text-slate-200 px-2 py-1 rounded-md hidden sm:flex items-center gap-1 shadow-sm ${isOverdueGroup ? 'bg-red-950/50 border-red-900/50' : 'bg-slate-800/80 border-slate-600'}`} title={priorities.find(pr=>pr.value===p)?.label}>
                                     <span>{priorityIcon[p as keyof typeof priorityIcon]}</span>
                                     <span className="font-medium">{count}</span>
                                 </span>
@@ -861,7 +859,7 @@ export default function TodoApp() {
                             exit={{ height: 0, opacity: 0 }} 
                             className="overflow-hidden bg-slate-800"
                           >
-                            <div className="p-4 space-y-3 border-t border-slate-700/50 bg-slate-900/20">
+                            <div className="p-3 sm:p-4 space-y-3 border-t border-slate-700/50 bg-slate-900/20">
                               {tasksForThisDate.map(task => (
                                 <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
                               ))}
@@ -879,20 +877,20 @@ export default function TodoApp() {
 
         {activeTab === "calendar" && (
           <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="p-4 sm:p-6 space-y-6">
               <div className="flex justify-between items-center">
-                <Button variant="outline" className="border-slate-600 bg-slate-700 text-white hover:bg-slate-600" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}>Previous</Button>
-                <div className="text-2xl font-bold tracking-wide text-slate-100">{currentMonth.toLocaleString("default", { month: "long" })} {currentMonth.getFullYear()}</div>
-                <Button variant="outline" className="border-slate-600 bg-slate-700 text-white hover:bg-slate-600" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}>Next</Button>
+                <Button variant="outline" size="sm" className="border-slate-600 bg-slate-700 text-white hover:bg-slate-600 px-2 sm:px-4" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}>Prev</Button>
+                <div className="text-xl sm:text-2xl font-bold tracking-wide text-slate-100">{currentMonth.toLocaleString("default", { month: "long" })} {currentMonth.getFullYear()}</div>
+                <Button variant="outline" size="sm" className="border-slate-600 bg-slate-700 text-white hover:bg-slate-600 px-2 sm:px-4" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}>Next</Button>
               </div>
 
-              <div className="grid grid-cols-7 gap-2 text-center text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">
-                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d}>{d}</div>)}
+              <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center text-xs sm:text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d}>{d.substring(0, 3)}</div>)}
               </div>
 
-              <div className="grid grid-cols-7 gap-2">
+              <div className="grid grid-cols-7 gap-1 sm:gap-2">
                 {calendarDays.map((day, idx) => {
-                  if (!day) return <div key={idx} className="bg-slate-900/30 rounded-xl border border-dashed border-slate-700/30"></div>;
+                  if (!day) return <div key={idx} className="bg-slate-900/30 rounded-lg sm:rounded-xl border border-dashed border-slate-700/30 min-h-[60px] md:min-h-[80px]"></div>;
                   const iso = toISODate(day);
                   const isToday = iso === today;
                   const dayTasks = tasksByDate[iso] || [];
@@ -906,13 +904,13 @@ export default function TodoApp() {
                         setExpandedDates(prev => ({ ...prev, [iso]: true })); 
                         setActiveTab("tasks"); 
                       }} 
-                      className={`p-3 min-h-[80px] flex flex-col rounded-xl cursor-pointer ${bg} hover:opacity-80 transition-all ${isToday ? 'ring-4 ring-blue-500 ring-offset-4 ring-offset-slate-800 shadow-2xl scale-[1.05] z-10' : 'shadow-md border border-white/5'}`}
+                      className={`p-1 sm:p-3 min-h-[60px] md:min-h-[80px] flex flex-col rounded-lg sm:rounded-xl cursor-pointer ${bg} hover:opacity-80 transition-all ${isToday ? 'ring-2 sm:ring-4 ring-blue-500 ring-offset-2 sm:ring-offset-4 ring-offset-slate-800 shadow-xl sm:shadow-2xl scale-[1.05] z-10' : 'shadow-md border border-white/5'}`}
                     >
-                      <div className="flex justify-between items-start mb-auto">
-                          <span className={`font-bold text-lg ${isToday ? 'text-white drop-shadow-md' : 'text-slate-100'}`}>{day.getDate()}</span>
-                          {isToday && <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded shadow-sm uppercase tracking-widest font-black">Today</span>}
+                      <div className="flex flex-col sm:flex-row justify-between items-center sm:items-start mb-auto w-full">
+                          <span className={`font-bold text-sm sm:text-lg ${isToday ? 'text-white drop-shadow-md' : 'text-slate-100'}`}>{day.getDate()}</span>
+                          {isToday && <span className="text-[8px] sm:text-[10px] bg-blue-500 text-white px-1 sm:px-2 py-0.5 rounded shadow-sm uppercase tracking-widest font-black mt-1 sm:mt-0">Today</span>}
                       </div>
-                      {dayTasks.length > 0 && <div className="text-xs font-bold text-white/95 bg-black/20 px-2 py-1 rounded mt-2 text-center">{dayTasks.length} tasks</div>}
+                      {dayTasks.length > 0 && <div className="text-[10px] sm:text-xs font-bold text-white/95 bg-black/20 px-1 sm:px-2 py-1 rounded mt-1 sm:mt-2 text-center w-full truncate">{dayTasks.length} tasks</div>}
                     </div>
                   );
                 })}
@@ -923,39 +921,93 @@ export default function TodoApp() {
 
         {activeTab === "tags" && (
           <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="p-4 sm:p-6 space-y-4">
               <div className="text-xl font-bold border-b border-slate-700 pb-2">Tag Management</div>
-              <div className="grid md:grid-cols-3 gap-4 mt-4">
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
                 {allTags.length === 0 && <div className="text-slate-400">No tags yet. Add tags to tasks to categorize them.</div>}
-                {allTags.map((tag: string) => (
-                  <div key={tag} className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
-                    <div className="flex items-center justify-between mb-3 border-b border-slate-700/50 pb-2">
-                      <div className="font-bold text-lg text-indigo-300">#{tag}</div>
-                      <div className="text-sm bg-indigo-900/40 text-indigo-200 px-2 py-1 rounded-md font-medium">{collectTasksWithTag(tasks, tag).length} tasks</div>
-                    </div>
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                      {collectTasksWithTag(tasks, tag).map(t => (
-                        <details key={t.id} className="bg-slate-800 border border-slate-700 p-2 rounded-lg group">
-                          <summary className="cursor-pointer text-slate-200 font-medium list-none flex justify-between items-center">
-                              <span className={t.completed ? 'line-through text-slate-400' : ''}>{t.title}</span>
-                              <span className="text-xs text-slate-400 group-open:hidden">{t.date}</span>
-                          </summary>
-                          <div className="mt-3 text-sm text-slate-300 space-y-1 bg-slate-900/50 p-2 rounded border border-slate-700/50">
-                            <div><span className="text-slate-400">Date:</span> {t.date}</div>
-                            <div><span className="text-slate-400">Priority:</span> {priorities.find(p=>p.value===t.priority)?.label || t.priority}</div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-slate-400">Progress:</span> 
-                                <div className="flex-1 bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                                    <div className="bg-blue-500 h-full" style={{width: `${t.progress||0}%`}}></div>
+                
+                {allTags.map((tag: string) => {
+                  const rawTasksForTag = collectTasksWithTag(tasks, tag);
+                  
+                  const seenRecurringTitles = new Set();
+                  const uniqueTasksForTag = [...rawTasksForTag]
+                      .sort((a, b) => {
+                         if (a.completed !== b.completed) return a.completed ? 1 : -1;
+                         return b.date.localeCompare(a.date);
+                      })
+                      .filter(t => {
+                          if (t.recurrence && t.recurrence.frequency !== 'none') {
+                              if (seenRecurringTitles.has(t.title)) return false;
+                              seenRecurringTitles.add(t.title);
+                              return true;
+                          }
+                          return true;
+                      });
+
+                  return (
+                    <div key={tag} className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
+                      <div className="flex items-center justify-between mb-3 border-b border-slate-700/50 pb-2">
+                        <div className="font-bold text-lg text-indigo-300 truncate mr-2">#{tag}</div>
+                        <div className="text-sm bg-indigo-900/40 text-indigo-200 px-2 py-1 rounded-md font-medium whitespace-nowrap">
+                            {uniqueTasksForTag.length} tasks
+                        </div>
+                      </div>
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                        {uniqueTasksForTag.map(t => {
+                          // FEATURE ADDITION: Format Frequency Label for summary view
+                          const isRec = t.recurrence && t.recurrence.frequency !== 'none';
+                          const freqLabel = isRec ? t.recurrence.frequency.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : '';
+
+                          return (
+                            <details key={t.id} className="bg-slate-800 border border-slate-700 p-2 rounded-lg group">
+                              <summary className="cursor-pointer text-slate-200 font-medium list-none flex justify-between items-center gap-2">
+                                  <span className={`truncate ${t.completed ? 'line-through text-slate-400' : ''}`}>
+                                    {t.title}
+                                  </span>
+                                  
+                                  {/* FEATURE ADDITION: Replaced hardcoded t.date with recurrence logic */}
+                                  <span className="text-xs text-slate-400 whitespace-nowrap group-open:hidden">
+                                      {isRec ? `🔁 ${freqLabel}` : t.date}
+                                  </span>
+                              </summary>
+                              
+                              <div className="mt-3 text-sm text-slate-300 space-y-1 bg-slate-900/50 p-2 rounded border border-slate-700/50">
+                                
+                                {/* FEATURE ADDITION: Recurrence Specific Details View */}
+                                {isRec ? (
+                                    <>
+                                        <div className="flex justify-between items-center">
+                                            <div><span className="text-slate-400">Recurrence:</span> <span className="capitalize">{freqLabel}</span> {t.recurrence.interval > 1 && `(Every ${t.recurrence.interval})`}</div>
+                                        </div>
+                                        {t.recurrence.frequency === 'custom_dates' ? (
+                                            <div><span className="text-slate-400">Dates:</span> <span className="break-words whitespace-normal block mt-1">{(t.recurrence.specificDates || []).join(', ')}</span></div>
+                                        ) : (
+                                            <>
+                                                <div><span className="text-slate-400">Active Date:</span> {t.date}</div>
+                                                {t.recurrence.endDate && <div><span className="text-slate-400">Ends:</span> {t.recurrence.endDate}</div>}
+                                            </>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div><span className="text-slate-400">Date:</span> {t.date}</div>
+                                )}
+                                
+                                <div><span className="text-slate-400">Priority:</span> {priorities.find(p=>p.value===t.priority)?.label || t.priority}</div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-slate-400">Progress:</span> 
+                                    <div className="flex-1 bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                                        <div className="bg-blue-500 h-full" style={{width: `${t.progress||0}%`}}></div>
+                                    </div>
+                                    <span className="text-xs">{t.progress || 0}%</span>
                                 </div>
-                                <span className="text-xs">{t.progress || 0}%</span>
-                            </div>
-                          </div>
-                        </details>
-                      ))}
+                              </div>
+                            </details>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -963,34 +1015,34 @@ export default function TodoApp() {
 
         {activeTab === "find" && (
           <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="p-4 sm:p-6 space-y-6">
               <div className="text-xl font-bold border-b border-slate-700 pb-2">Advanced Search</div>
               <div className="flex gap-3 items-center flex-wrap bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
                 <Input placeholder="Search titles or comments..." value={findQuery} onChange={e => setFindQuery(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full md:w-72" />
                 <Select value={findPriority} onValueChange={setFindPriority}>
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-40"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-slate-800 text-white">
                     <SelectItem value="all">All priorities</SelectItem>
                     {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
                   </SelectContent>
                 </Select>
                 <Select value={findTag} onValueChange={setFindTag}>
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-40"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-slate-800 text-white">
                     <SelectItem value="all">All tags</SelectItem>
                     {allTags.map(tag => (<SelectItem key={tag} value={tag}>{tag}</SelectItem>))}
                   </SelectContent>
                 </Select>
                 <Select value={findCompleted} onValueChange={setFindCompleted}>
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-36"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-36"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-slate-800 text-white">
                     <SelectItem value="all">All Statuses</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
                   </SelectContent>
                 </Select>
-                <Input type="date" value={findDateFrom} onChange={e=>setFindDateFrom(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-36" title="From Date" />
-                <Input type="date" value={findDateTo} onChange={e=>setFindDateTo(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-36" title="To Date" />
+                <Input type="date" value={findDateFrom} onChange={e=>setFindDateFrom(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full sm:w-36" title="From Date" />
+                <Input type="date" value={findDateTo} onChange={e=>setFindDateTo(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full sm:w-36" title="To Date" />
               </div>
 
               <div className="space-y-3">
@@ -1001,19 +1053,19 @@ export default function TodoApp() {
                 )}
                 {findResults.map(t => (
                   <details key={t.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl group hover:border-slate-500 transition-colors">
-                    <summary className="cursor-pointer text-slate-200 font-medium list-none flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                            <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300 group-open:hidden">View Details</span>
-                            <span className={`text-lg ${t.completed ? 'line-through text-slate-400' : ''}`}>{t.title}</span>
+                    <summary className="cursor-pointer text-slate-200 font-medium list-none flex justify-between items-center gap-2">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                            <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300 hidden sm:block group-open:hidden">View</span>
+                            <span className={`text-base sm:text-lg truncate ${t.completed ? 'line-through text-slate-400' : ''}`}>{t.title}</span>
                         </div>
-                        <span className="text-sm font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded">{t.date}</span>
+                        <span className="text-xs sm:text-sm font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded whitespace-nowrap">{t.date}</span>
                     </summary>
                     <div className="mt-4 grid md:grid-cols-2 gap-4 text-sm text-slate-300 bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
                         <div className="space-y-2">
-                            <div><span className="text-slate-500 font-medium w-20 inline-block">Status:</span> {t.completed ? <span className="text-green-400 font-bold">Completed</span> : <span className="text-yellow-400 font-bold">Active</span>}</div>
-                            <div><span className="text-slate-500 font-medium w-20 inline-block">Priority:</span> {priorities.find(p=>p.value===t.priority)?.label || t.priority}</div>
+                            <div><span className="text-slate-500 font-medium w-16 sm:w-20 inline-block">Status:</span> {t.completed ? <span className="text-green-400 font-bold">Completed</span> : <span className="text-yellow-400 font-bold">Active</span>}</div>
+                            <div><span className="text-slate-500 font-medium w-16 sm:w-20 inline-block">Priority:</span> {priorities.find(p=>p.value===t.priority)?.label || t.priority}</div>
                             <div className="flex items-center gap-2">
-                                <span className="text-slate-500 font-medium w-20 inline-block">Progress:</span> 
+                                <span className="text-slate-500 font-medium w-16 sm:w-20 inline-block">Progress:</span> 
                                 <div className="flex-1 max-w-[150px] bg-slate-700 h-2 rounded-full overflow-hidden">
                                     <div className="bg-blue-500 h-full" style={{width: `${t.progress||0}%`}}></div>
                                 </div>
@@ -1036,40 +1088,40 @@ export default function TodoApp() {
 
         {activeTab === "analytics" && (
           <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="p-4 sm:p-6 space-y-6">
               
               <div className="text-xl font-bold border-b border-slate-700 pb-2">Overview</div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 text-center">
-                <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
-                  <div className="text-4xl font-black text-blue-400">{analyticsData.total}</div>
-                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-xs">Total Tasks</div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 text-center">
+                <div className="bg-slate-900/50 border border-slate-700 p-3 sm:p-4 rounded-xl shadow-sm">
+                  <div className="text-3xl sm:text-4xl font-black text-blue-400">{analyticsData.total}</div>
+                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-[10px] sm:text-xs">Total Tasks</div>
                 </div>
-                <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
-                  <div className="text-4xl font-black text-green-400">{analyticsData.completed}</div>
-                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-xs">Completed</div>
+                <div className="bg-slate-900/50 border border-slate-700 p-3 sm:p-4 rounded-xl shadow-sm">
+                  <div className="text-3xl sm:text-4xl font-black text-green-400">{analyticsData.completed}</div>
+                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-[10px] sm:text-xs">Completed</div>
                 </div>
-                <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl shadow-sm">
-                  <div className="text-4xl font-black text-indigo-400">{analyticsData.avgProgress}%</div>
-                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-xs">Avg Progress</div>
+                <div className="bg-slate-900/50 border border-slate-700 p-3 sm:p-4 rounded-xl shadow-sm">
+                  <div className="text-3xl sm:text-4xl font-black text-indigo-400">{analyticsData.avgProgress}%</div>
+                  <div className="text-slate-400 font-medium mt-1 uppercase tracking-wider text-[10px] sm:text-xs">Avg Progress</div>
                 </div>
-                <div className="bg-slate-900/50 border border-red-900/50 p-4 rounded-xl shadow-sm relative overflow-hidden">
+                <div className="bg-slate-900/50 border border-red-900/50 p-3 sm:p-4 rounded-xl shadow-sm relative overflow-hidden">
                   <div className="absolute inset-0 bg-red-500/5"></div>
-                  <div className="text-4xl font-black text-red-500 relative z-10">{analyticsData.overdue}</div>
-                  <div className="text-red-400/80 font-medium mt-1 uppercase tracking-wider text-xs relative z-10">Overdue</div>
+                  <div className="text-3xl sm:text-4xl font-black text-red-500 relative z-10">{analyticsData.overdue}</div>
+                  <div className="text-red-400/80 font-medium mt-1 uppercase tracking-wider text-[10px] sm:text-xs relative z-10">Overdue</div>
                 </div>
               </div>
 
               <div className="grid lg:grid-cols-2 gap-6">
-                <div className="bg-slate-900/30 border border-slate-700 p-5 rounded-xl">
-                  <div className="text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-blue-500 rounded-full inline-block"></span> Tasks Over Time</div>
-                  <div style={{ height: 350 }}>
+                <div className="bg-slate-900/30 border border-slate-700 p-4 sm:p-5 rounded-xl overflow-hidden">
+                  <div className="text-base sm:text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-blue-500 rounded-full inline-block"></span> Tasks Over Time</div>
+                  <div className="h-[250px] sm:h-[350px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={byDateDetailed} margin={{ top: 10, right: 30, left: 0, bottom: 40 }}>
+                      <LineChart data={byDateDetailed} margin={{ top: 10, right: 10, left: -20, bottom: 40 }}>
                         <CartesianGrid stroke="#334155" strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} angle={-45} textAnchor="end" height={60} axisLine={false} tickLine={false} />
-                        <YAxis yAxisId="left" tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                        <YAxis yAxisId="right" orientation="right" tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} angle={-45} textAnchor="end" height={60} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
                         <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc'}} />
                         <BarChart data={byDateDetailed}>
                           <Bar dataKey="count" fill="#3b82f6" radius={[4,4,0,0]} />
@@ -1078,24 +1130,22 @@ export default function TodoApp() {
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="mt-2 text-xs font-medium text-slate-400 flex justify-center gap-4">
+                  <div className="mt-2 text-[10px] sm:text-xs font-medium text-slate-400 flex justify-center gap-4">
                       <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-500 rounded-sm inline-block"></span> Total Tasks</span>
                       <span className="flex items-center gap-1"><span className="w-3 h-1 bg-green-500 rounded-full inline-block"></span> % Completed</span>
                   </div>
                 </div>
 
-                <div className="bg-slate-900/30 border border-slate-700 p-5 rounded-xl">
-                  <div className="text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-indigo-500 rounded-full inline-block"></span> Tag Insights</div>
-                  <div style={{ height: 350 }}>
+                <div className="bg-slate-900/30 border border-slate-700 p-4 sm:p-5 rounded-xl overflow-hidden">
+                  <div className="text-base sm:text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-indigo-500 rounded-full inline-block"></span> Tag Insights</div>
+                  <div className="h-[250px] sm:h-[350px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={byTagDetailed} margin={{ top: 10, right: 20, left: 0, bottom: 80 }}>
+                      <BarChart data={byTagDetailed} margin={{ top: 10, right: 10, left: -20, bottom: 80 }}>
                         <CartesianGrid stroke="#334155" strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="tag" tick={{ fontSize: 12, fill: '#94a3b8' }} angle={-45} textAnchor="end" height={70} axisLine={false} tickLine={false} />
-                        <YAxis tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                        <XAxis dataKey="tag" tick={{ fontSize: 10, fill: '#94a3b8' }} angle={-45} textAnchor="end" height={70} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
                         <Tooltip cursor={{fill: '#334155', opacity: 0.4}} contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc'}} />
                         
-                        {/* CHART FIX: Added Overdue mapping. 
-                            Removed radii from inner stacked items to ensure smooth stacking appearance. */}
                         <Bar dataKey="completedCount" stackId="a" fill="#22c55e" name="Completed" />
                         <Bar dataKey="remaining" stackId="a" fill="#eab308" name="Remaining" />
                         <Bar dataKey="overdue" stackId="a" fill="#ef4444" name="Overdue" radius={[4,4,0,0]} />
@@ -1104,8 +1154,7 @@ export default function TodoApp() {
                     </ResponsiveContainer>
                   </div>
                   
-                  {/* CHART FIX: Custom legend updated with the Overdue color chip */}
-                  <div className="mt-2 text-xs font-medium text-slate-400 flex justify-center gap-4">
+                  <div className="mt-2 text-[10px] sm:text-xs font-medium text-slate-400 flex justify-center gap-2 sm:gap-4 flex-wrap">
                       <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm inline-block"></span> Completed</span>
                       <span className="flex items-center gap-1"><span className="w-3 h-3 bg-yellow-500 rounded-sm inline-block"></span> Remaining</span>
                       <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-500 rounded-sm inline-block"></span> Overdue</span>
@@ -1114,8 +1163,8 @@ export default function TodoApp() {
               </div>
 
               <div className="grid lg:grid-cols-3 gap-6">
-                  <div className="bg-slate-900/30 border border-slate-700 p-5 rounded-xl col-span-1">
-                    <div className="text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-orange-500 rounded-full inline-block"></span> Priorities</div>
+                  <div className="bg-slate-900/30 border border-slate-700 p-4 sm:p-5 rounded-xl col-span-1">
+                    <div className="text-base sm:text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-orange-500 rounded-full inline-block"></span> Priorities</div>
                     <div style={{ height: 220 }}>
                       <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -1125,8 +1174,8 @@ export default function TodoApp() {
                               nameKey="name"
                               cx="50%"
                               cy="50%"
-                              outerRadius={90}
-                              innerRadius={60}
+                              outerRadius={80}
+                              innerRadius={50}
                               paddingAngle={2}
                               stroke="none"
                             >
@@ -1151,11 +1200,11 @@ export default function TodoApp() {
                     </div>
                   </div>
 
-                  <div className="bg-slate-900/30 border border-slate-700 p-5 rounded-xl col-span-1 lg:col-span-2">
-                    <div className="text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-purple-500 rounded-full inline-block"></span> Upcoming & Immediate Focus</div>
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                  <div className="bg-slate-900/30 border border-slate-700 p-4 sm:p-5 rounded-xl col-span-1 lg:col-span-2">
+                    <div className="text-base sm:text-lg font-bold mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-purple-500 rounded-full inline-block"></span> Upcoming & Immediate Focus</div>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 sm:pr-2">
                       {tasks.filter(t => !t.completed && t.date && t.date >= today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8).map(t => (
-                        <div key={t.id} className="flex items-center justify-between bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-slate-500 transition-colors">
+                        <div key={t.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-slate-500 transition-colors">
                           <div>
                             <div className="font-semibold text-slate-200 text-base">{t.title}</div>
                             <div className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2">
@@ -1163,9 +1212,9 @@ export default function TodoApp() {
                                 {t.date === today && <span className="bg-blue-500/20 text-blue-400 px-1.5 py-0 rounded text-[10px] uppercase font-bold tracking-wider">Today</span>}
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                              <div className="text-right">
-                                  <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">Priority</div>
+                          <div className="flex items-center gap-3 sm:ml-auto">
+                              <div className="text-left sm:text-right">
+                                  <div className="text-[10px] sm:text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">Priority</div>
                                   <div className="flex items-center gap-1">
                                       <span style={{ width: 8, height: 8, background: priorityColor[t.priority as keyof typeof priorityColor] || '#64748b', borderRadius: '50%' }} />
                                       <span className="text-sm font-medium text-slate-300">{priorities.find(p=>p.value===t.priority)?.label.replace(/[^A-Za-z]/g, '').trim()}</span>
@@ -1175,7 +1224,7 @@ export default function TodoApp() {
                         </div>
                       ))}
                       {tasks.filter(t => !t.completed && t.date && t.date >= today).length === 0 && (
-                          <div className="text-center py-10 bg-slate-800/50 rounded-xl border border-dashed border-slate-700 text-slate-400">
+                          <div className="text-center py-10 bg-slate-800/50 rounded-xl border border-dashed border-slate-700 text-slate-400 text-sm">
                               No upcoming tasks on the radar. Relax!
                           </div>
                       )}
