@@ -130,44 +130,54 @@ async function cleanupDeletedTasks(profile: string, tasks: any[]) {
     .not("id", "in", `(${ids.join(",")})`);
 }
 
-// -------------------- Recurrence Engine --------------------
-function getNextOccurrence(dateStr: string, recurrence: any): string | null {
+// -------------------- Recurrence Engine (Updated for "Catch-Up") --------------------
+function getNextOccurrence(dateStr: string, recurrence: any, todayIso: string): string | null {
   if (!recurrence || recurrence.frequency === 'none') return null;
-  const d = new Date(dateStr);
+  let d = new Date(dateStr);
   if (isNaN(d.getTime())) return null;
 
   const interval = recurrence.interval || 1;
+  let iso = dateStr;
+  let iterations = 0;
 
-  if (recurrence.frequency === 'daily') {
-    d.setDate(d.getDate() + interval);
-  } else if (recurrence.frequency === 'weekly') {
-    if (recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0) {
-      const currentDay = d.getDay();
-      const sortedDays = [...recurrence.daysOfWeek].sort((a, b) => a - b);
-      const nextDay = sortedDays.find(day => day > currentDay);
-      if (nextDay !== undefined) {
-        d.setDate(d.getDate() + (nextDay - currentDay));
+  while (iso <= dateStr || iso < todayIso) {
+    if (recurrence.frequency === 'daily') {
+      d.setDate(d.getDate() + interval);
+    } else if (recurrence.frequency === 'weekly') {
+      if (recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0) {
+        const currentDay = d.getDay();
+        const sortedDays = [...recurrence.daysOfWeek].sort((a, b) => a - b);
+        const nextDay = sortedDays.find(day => day > currentDay);
+        if (nextDay !== undefined) {
+          d.setDate(d.getDate() + (nextDay - currentDay));
+        } else {
+          const daysUntilNext = 7 - currentDay + sortedDays[0];
+          const weekOffset = (interval - 1) * 7;
+          d.setDate(d.getDate() + daysUntilNext + weekOffset);
+        }
       } else {
-        const daysUntilNext = 7 - currentDay + sortedDays[0];
-        const weekOffset = (interval - 1) * 7;
-        d.setDate(d.getDate() + daysUntilNext + weekOffset);
+        d.setDate(d.getDate() + 7 * interval);
       }
-    } else {
-      d.setDate(d.getDate() + 7 * interval);
+    } else if (recurrence.frequency === 'monthly') {
+      d.setMonth(d.getMonth() + interval);
+    } else if (recurrence.frequency === 'yearly') {
+      d.setFullYear(d.getFullYear() + interval);
+    } else if (recurrence.frequency === 'custom_dates') {
+      const next = recurrence.specificDates.find((sd: string) => sd > iso && sd >= todayIso);
+      if (next) {
+        iso = next;
+        break;
+      } else {
+        return null;
+      }
     }
-  } else if (recurrence.frequency === 'monthly') {
-    d.setMonth(d.getMonth() + interval);
-  } else if (recurrence.frequency === 'yearly') {
-    d.setFullYear(d.getFullYear() + interval);
-  } else if (recurrence.frequency === 'custom_dates') {
-    if (recurrence.specificDates && recurrence.specificDates.length > 0) {
-      const next = recurrence.specificDates.find((sd: string) => sd > dateStr);
-      if (next) return next;
-    }
-    return null;
+
+    iso = toISODate(d);
+    
+    iterations++;
+    if (iterations > 1000) break; 
   }
 
-  const iso = toISODate(d);
   if (recurrence.endDate && iso > recurrence.endDate) return null;
   return iso;
 }
@@ -227,6 +237,8 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
     }
   };
 
+  const taskProgress = task.progress || 0;
+
   return (
     <div className="space-y-3" style={{ marginLeft: level * 20 }}>
       <div className="p-4 rounded-xl border border-slate-600 bg-slate-800 hover:bg-slate-700 transition-all relative overflow-hidden">
@@ -235,7 +247,15 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
             <input
               type="checkbox"
               checked={!!task.completed}
-              onChange={e => { e.stopPropagation(); updateSelf({ completed: !task.completed }); }}
+              onChange={e => { 
+                  e.stopPropagation(); 
+                  const willComplete = !task.completed;
+                  // FEATURE: Completing task auto-sets progress to 100%
+                  updateSelf({ 
+                      completed: willComplete, 
+                      progress: willComplete ? 100 : taskProgress 
+                  }); 
+              }}
               className="mt-1 w-4 h-4 accent-blue-500 flex-shrink-0"
             />
             <div className="flex-1 min-w-0">
@@ -263,7 +283,7 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
 
                 {task.recurrence && task.recurrence.frequency !== 'none' && (
                   <span className="ml-2 text-xs text-blue-400 bg-blue-900/40 px-1.5 py-0.5 rounded inline-block translate-y-[-2px]" title="Recurring task">
-                    🔁 {task.recurrence.frequency}
+                    🔁 {task.recurrence.frequency.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                   </span>
                 )}
               </div>
@@ -292,21 +312,54 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
           </div>
         </div>
 
-        {(task.progress || 0) > 0 && !task.completed && (
+        {taskProgress > 0 && !task.completed && (
             <div className="absolute bottom-0 left-0 h-1 bg-slate-600 w-full opacity-50">
-                <div className="h-full bg-blue-500" style={{ width: `${task.progress}%` }} />
+                <div className="h-full bg-blue-500" style={{ width: `${taskProgress}%` }} />
             </div>
         )}
 
         <AnimatePresence>
           {expanded && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-4 space-y-4 pb-2">
+              
+              {/* FEATURE: Tactile Progress Buttons + Skip Button */}
               <div>
-                <div className="text-sm text-slate-300 mb-1 flex justify-between">
-                    <span>Progress</span>
-                    <span className="font-mono text-blue-400">{task.progress || 0}%</span>
+                <div className="text-sm text-slate-300 mb-2 flex justify-between items-center">
+                    <span className="font-semibold">Progress</span>
                 </div>
-                <input type="range" min="0" max="100" value={task.progress || 0} onChange={e => updateSelf({ progress: Number(e.target.value) })} className="w-full accent-blue-500" />
+                <div className="flex flex-wrap gap-2 items-center">
+                    {[0, 25, 50, 75, 100].map(pct => (
+                        <button
+                            key={pct}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                updateSelf({ 
+                                    progress: pct, 
+                                    // Auto-complete if they click 100%
+                                    ...(pct === 100 ? { completed: true } : {}) 
+                                });
+                            }}
+                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm ${taskProgress === pct ? 'bg-blue-600 text-white ring-2 ring-blue-400/50 scale-[1.02]' : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600 hover:text-white'}`}
+                        >
+                            {pct}%
+                        </button>
+                    ))}
+                    
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            updateSelf({
+                                completed: true,
+                                progress: 0,
+                                comments: [...(task.comments || []), "Missed/Skipped"]
+                            });
+                        }}
+                        className="ml-auto px-3 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm bg-red-900/30 text-red-400 border border-red-900/50 hover:bg-red-900/60 hover:text-red-200 flex items-center gap-1"
+                        title="Mark complete with 0% progress and log as missed"
+                    >
+                        ⏭️ Skip Task
+                    </button>
+                </div>
               </div>
 
               {/* Subtasks */}
@@ -316,7 +369,12 @@ function TaskNode({ task, onChange, onDelete, level = 0 }: { task: any; onChange
                   <div key={st.id} className="bg-slate-800 border border-slate-700 rounded-lg p-2 mb-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <input type="checkbox" checked={!!st.completed} onChange={() => updateChild({ ...st, completed: !st.completed })} className="accent-blue-500 flex-shrink-0" />
+                        <input 
+                            type="checkbox" 
+                            checked={!!st.completed} 
+                            onChange={() => updateChild({ ...st, completed: !st.completed, progress: !st.completed ? 100 : st.progress })} 
+                            className="accent-blue-500 flex-shrink-0" 
+                        />
                         <div className={`truncate text-sm ${st.completed ? "line-through text-slate-400" : "text-slate-200"}`}>{st.title}</div>
                       </div>
                       <div className="flex items-center gap-1 md:gap-2">
@@ -411,7 +469,9 @@ export default function TodoApp() {
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [priority, setPriority] = useState("2");
   const [tagInput, setTagInput] = useState("");
-  const [hideCompleted, setHideCompleted] = useState(false);
+  const [hideCompleted, setHideCompleted] = useState(true);
+  
+  const [showOverdueOnToday, setShowOverdueOnToday] = useState(false);
 
   const [tasksLoaded, setTasksLoaded] = useState(false);
   
@@ -423,7 +483,7 @@ export default function TodoApp() {
   const [recEndDate, setRecEndDate] = useState("");
   const [recDatesInput, setRecDatesInput] = useState("");
 
-  const [activeTab, setActiveTab] = useState("calendar");
+  const [activeTab, setActiveTab] = useState("today");
   
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>(() => ({
     [toISODate(new Date())]: true,
@@ -489,6 +549,10 @@ export default function TodoApp() {
   }, [profiles]);
 
   const today = toISODate(new Date());
+  
+  const tomorrowObj = new Date();
+  tomorrowObj.setDate(tomorrowObj.getDate() + 1);
+  const tomorrow = toISODate(tomorrowObj);
 
   const addProfile = () => {
     const name = newProfileName.trim();
@@ -545,7 +609,7 @@ export default function TodoApp() {
       let newTasks = prev.map(t => (t.id === updated.id ? updated : t));
 
       if (oldTask && !oldTask.completed && updated.completed && updated.recurrence && !updated.nextInstanceGenerated) {
-        const nextDate = getNextOccurrence(updated.date, updated.recurrence);
+        const nextDate = getNextOccurrence(updated.date, updated.recurrence, today);
         if (nextDate) {
           updated.nextInstanceGenerated = true;
           const nextTask = {
@@ -601,6 +665,10 @@ export default function TodoApp() {
       return a.localeCompare(b);
     });
   }, [groupedTasksByDate]);
+
+  const tasksToday = useMemo(() => tasks.filter(t => t.date === today && (!t.completed || !hideCompleted)).sort((a, b) => Number(b.priority) - Number(a.priority)), [tasks, today, hideCompleted]);
+  const tasksTomorrow = useMemo(() => tasks.filter(t => t.date === tomorrow && (!t.completed || !hideCompleted)).sort((a, b) => Number(b.priority) - Number(a.priority)), [tasks, tomorrow, hideCompleted]);
+  const tasksOverdue = useMemo(() => tasks.filter(t => t.date && t.date < today && !t.completed).sort((a, b) => Number(b.priority) - Number(a.priority)), [tasks, today]);
 
   const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
@@ -685,6 +753,75 @@ export default function TodoApp() {
     setRecDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
   };
 
+  const renderTaskInputBar = () => (
+    <div className="flex flex-col gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+        <div className="flex gap-3 flex-wrap items-center">
+            <Input placeholder="What needs to be done?" value={title} onChange={e => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-full md:w-auto md:flex-1" />
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full sm:w-36" />
+            <Select value={priority} onValueChange={setPriority}>
+            <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-36"><SelectValue /></SelectTrigger>
+            <SelectContent className="bg-slate-800 text-white">
+                {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
+            </SelectContent>
+            </Select>
+            <Input placeholder="Tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-48 hidden md:block" />
+            
+            <div className="flex items-center gap-2 bg-slate-700 px-3 py-2 rounded-md border border-slate-600 cursor-pointer select-none w-full sm:w-auto" onClick={() => setIsRecurring(!isRecurring)}>
+            <input type="checkbox" checked={isRecurring} onChange={() => {}} className="accent-blue-500 pointer-events-none" />
+            <span className="text-sm">Recurring</span>
+            </div>
+
+            <Button className="bg-blue-600 hover:bg-blue-500 w-full md:w-auto font-bold tracking-wide shadow-md" onClick={addTask}>Add Task</Button>
+        </div>
+
+        <AnimatePresence>
+            {isRecurring && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-800 border border-slate-600 p-4 rounded-xl flex gap-4 flex-wrap items-center overflow-hidden">
+                <Select value={recFreq} onValueChange={setRecFreq}>
+                <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-36"><SelectValue placeholder="Frequency" /></SelectTrigger>
+                <SelectContent className="bg-slate-800 text-white">
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                    <SelectItem value="custom_dates">Specific Dates</SelectItem>
+                </SelectContent>
+                </Select>
+
+                {['daily', 'weekly', 'monthly', 'yearly'].includes(recFreq) && (
+                <div className="flex items-center gap-2 bg-slate-700/50 p-1 px-3 rounded-lg border border-slate-600/50">
+                    <span className="text-sm text-slate-300">Every</span>
+                    <Input type="number" min="1" value={recInterval} onChange={e => setRecInterval(Number(e.target.value))} className="bg-slate-800 border-slate-600 text-white w-16 h-8 text-center" />
+                    <span className="text-sm text-slate-300">
+                    {recFreq === 'daily' ? 'days' : recFreq === 'weekly' ? 'weeks' : recFreq === 'monthly' ? 'months' : 'years'}
+                    </span>
+                </div>
+                )}
+
+                {recFreq === 'weekly' && (
+                <div className="flex gap-1 border-l border-slate-600 pl-4 ml-2">
+                    {["S","M","T","W","T","F","S"].map((d, i) => (
+                        <button key={i} onClick={() => toggleDay(i)} className={`w-8 h-8 rounded-full text-xs font-bold transition-colors ${recDays.includes(i) ? 'bg-blue-500 text-white shadow-md' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
+                        {d}
+                        </button>
+                    ))}
+                </div>
+                )}
+
+                {recFreq === 'custom_dates' && (
+                <Input placeholder="e.g. 2026-06-01, 2026-12-25" value={recDatesInput} onChange={e => setRecDatesInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full sm:w-64" />
+                )}
+
+                <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
+                <span className="text-sm text-slate-400 font-medium">Ends:</span>
+                <Input type="date" value={recEndDate} onChange={e => setRecEndDate(e.target.value)} className="bg-slate-700 border-slate-600 text-slate-300 flex-1 sm:w-36 h-9" />
+                </div>
+            </motion.div>
+            )}
+        </AnimatePresence>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 p-3 sm:p-8">
       <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
@@ -711,7 +848,8 @@ export default function TodoApp() {
 
         <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
           <CardContent className="p-3 sm:p-4 flex gap-2 flex-wrap overflow-x-auto scrollbar-hide">
-            <button className={tabClass(activeTab === "tasks")} onClick={() => setActiveTab("tasks")}>Tasks</button>
+            <button className={tabClass(activeTab === "today")} onClick={() => setActiveTab("today")}>Today</button>
+            <button className={tabClass(activeTab === "all_tasks")} onClick={() => setActiveTab("all_tasks")}>All Tasks</button>
             <button className={tabClass(activeTab === "calendar")} onClick={() => setActiveTab("calendar")}>Calendar</button>
             <button className={tabClass(activeTab === "tags")} onClick={() => setActiveTab("tags")}>Tags</button>
             <button className={tabClass(activeTab === "analytics")} onClick={() => setActiveTab("analytics")}>Analytics</button>
@@ -719,79 +857,81 @@ export default function TodoApp() {
           </CardContent>
         </Card>
 
-        {activeTab === "tasks" && (
+        {activeTab === "today" && (
           <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
             <CardContent className="p-4 sm:p-6 space-y-6">
               
-              <div className="flex flex-col gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                <div className="flex gap-3 flex-wrap items-center">
-                  <Input placeholder="What needs to be done?" value={title} onChange={e => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-full md:w-auto md:flex-1" />
-                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full sm:w-36" />
-                  <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-36"><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-slate-800 text-white">
-                      {priorities.map(p => (<SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>))}
-                    </SelectContent>
-                  </Select>
-                  <Input placeholder="Tags (comma separated)" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="bg-slate-700 border-slate-600 text-white w-full md:w-48 hidden md:block" />
-                  
-                  <div className="flex items-center gap-2 bg-slate-700 px-3 py-2 rounded-md border border-slate-600 cursor-pointer select-none w-full sm:w-auto" onClick={() => setIsRecurring(!isRecurring)}>
-                    <input type="checkbox" checked={isRecurring} onChange={() => {}} className="accent-blue-500 pointer-events-none" />
-                    <span className="text-sm">Recurring</span>
-                  </div>
+              {renderTaskInputBar()}
 
-                  <Button className="bg-blue-600 hover:bg-blue-500 w-full md:w-auto font-bold tracking-wide shadow-md" onClick={addTask}>Add Task</Button>
-                </div>
-
-                <AnimatePresence>
-                  {isRecurring && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-800 border border-slate-600 p-4 rounded-xl flex gap-4 flex-wrap items-center overflow-hidden">
-                      <Select value={recFreq} onValueChange={setRecFreq}>
-                        <SelectTrigger className="bg-slate-700 border-slate-600 text-white w-full sm:w-36"><SelectValue placeholder="Frequency" /></SelectTrigger>
-                        <SelectContent className="bg-slate-800 text-white">
-                          <SelectItem value="daily">Daily</SelectItem>
-                          <SelectItem value="weekly">Weekly</SelectItem>
-                          <SelectItem value="monthly">Monthly</SelectItem>
-                          <SelectItem value="yearly">Yearly</SelectItem>
-                          <SelectItem value="custom_dates">Specific Dates</SelectItem>
-                        </SelectContent>
-                      </Select>
-
-                      {['daily', 'weekly', 'monthly', 'yearly'].includes(recFreq) && (
-                        <div className="flex items-center gap-2 bg-slate-700/50 p-1 px-3 rounded-lg border border-slate-600/50">
-                          <span className="text-sm text-slate-300">Every</span>
-                          <Input type="number" min="1" value={recInterval} onChange={e => setRecInterval(Number(e.target.value))} className="bg-slate-800 border-slate-600 text-white w-16 h-8 text-center" />
-                          <span className="text-sm text-slate-300">
-                            {recFreq === 'daily' ? 'days' : recFreq === 'weekly' ? 'weeks' : recFreq === 'monthly' ? 'months' : 'years'}
-                          </span>
-                        </div>
-                      )}
-
-                      {recFreq === 'weekly' && (
-                        <div className="flex gap-1 border-l border-slate-600 pl-4 ml-2">
-                           {["S","M","T","W","T","F","S"].map((d, i) => (
-                              <button key={i} onClick={() => toggleDay(i)} className={`w-8 h-8 rounded-full text-xs font-bold transition-colors ${recDays.includes(i) ? 'bg-blue-500 text-white shadow-md' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
-                                {d}
-                              </button>
-                           ))}
-                        </div>
-                      )}
-
-                      {recFreq === 'custom_dates' && (
-                        <Input placeholder="e.g. 2026-06-01, 2026-12-25" value={recDatesInput} onChange={e => setRecDatesInput(e.target.value)} className="bg-slate-700 border-slate-600 text-white w-full sm:w-64" />
-                      )}
-
-                      <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
-                        <span className="text-sm text-slate-400 font-medium">Ends:</span>
-                        <Input type="date" value={recEndDate} onChange={e => setRecEndDate(e.target.value)} className="bg-slate-700 border-slate-600 text-slate-300 flex-1 sm:w-36 h-9" />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+              <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+                 <h2 className="text-xl font-bold text-slate-200">Today's Focus</h2>
+                 <div className="flex gap-4 items-center">
+                    <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => setShowOverdueOnToday(!showOverdueOnToday)}>
+                        <input type="checkbox" checked={showOverdueOnToday} readOnly className="accent-red-500 pointer-events-none" />
+                        <span className="text-sm text-slate-300 font-medium">Show Overdue</span>
+                    </div>
+                    <div className="flex items-center gap-2 cursor-pointer select-none border-l border-slate-700 pl-4" onClick={() => setHideCompleted(!hideCompleted)}>
+                        <input type="checkbox" checked={hideCompleted} readOnly className="accent-blue-500 pointer-events-none" />
+                        <span className="text-sm text-slate-300 font-medium">Hide Completed</span>
+                    </div>
+                 </div>
               </div>
 
+              {showOverdueOnToday && tasksOverdue.length > 0 && (
+                <div className="mb-6">
+                    <h3 className="text-red-400 font-bold mb-3 flex items-center gap-2 uppercase tracking-wide text-sm bg-red-950/30 p-2 rounded border border-red-900/50">
+                        ⚠️ Overdue ({tasksOverdue.length})
+                    </h3>
+                    <div className="space-y-3">
+                        {tasksOverdue.map(task => (
+                            <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
+                        ))}
+                    </div>
+                </div>
+              )}
+
+              <div>
+                 <h3 className="text-blue-400 font-bold mb-3 flex items-center gap-2 uppercase tracking-wide text-sm bg-slate-900/50 p-2 rounded border border-slate-700/50">
+                     📅 Scheduled for Today ({today})
+                 </h3>
+                 <div className="space-y-3">
+                     {tasksToday.length === 0 ? (
+                         <div className="text-slate-400 text-center py-10 bg-slate-900/30 rounded-xl border border-dashed border-slate-700">
+                             {hideCompleted ? "You've finished all of today's tasks!" : "No tasks scheduled for today. You're free!"}
+                         </div>
+                     ) : tasksToday.map(task => (
+                         <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
+                     ))}
+                 </div>
+              </div>
+
+              <div className="mt-8">
+                 <h3 className="text-purple-400 font-bold mb-3 flex items-center gap-2 uppercase tracking-wide text-sm bg-slate-900/50 p-2 rounded border border-slate-700/50">
+                     ⏭️ Tomorrow's Agenda ({tomorrow})
+                 </h3>
+                 <div className="space-y-3">
+                     {tasksTomorrow.length === 0 ? (
+                         <div className="text-slate-500 text-center py-6 bg-slate-900/20 rounded-xl border border-dashed border-slate-700/50 text-sm">
+                             Nothing on the radar for tomorrow yet.
+                         </div>
+                     ) : tasksTomorrow.map(task => (
+                         <TaskNode key={task.id} task={task} onChange={updateTask} onDelete={deleteTask} />
+                     ))}
+                 </div>
+              </div>
+
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === "all_tasks" && (
+          <Card className="bg-slate-800 border border-slate-700 rounded-2xl shadow-xl">
+            <CardContent className="p-4 sm:p-6 space-y-6">
+              
+              {renderTaskInputBar()}
+
               <div className="flex justify-between items-end border-b border-slate-700 pb-2">
-                 <h2 className="text-xl font-bold text-slate-200">Your Tasks</h2>
+                 <h2 className="text-xl font-bold text-slate-200">All Tasks DB</h2>
                  <div className="flex items-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer select-none" onClick={() => setHideCompleted(!hideCompleted)}>
                     <input type="checkbox" checked={hideCompleted} onChange={() => {}} className="accent-blue-500 pointer-events-none" />
                     <span className="text-sm text-slate-300 font-medium">Hide Completed</span>
@@ -818,7 +958,7 @@ export default function TodoApp() {
                   const isOverdueGroup = dateKey === "⚠️ Overdue";
 
                   return (
-                    <div key={dateKey} className={`bg-slate-800 border rounded-xl overflow-hidden shadow-sm transition-colors ${isOverdueGroup ? 'border-red-900/50' : 'border-slate-700'}`}>
+                    <div key={dateKey} id={`date-group-${dateKey}`} className={`bg-slate-800 border rounded-xl overflow-hidden shadow-sm transition-colors ${isOverdueGroup ? 'border-red-900/50' : 'border-slate-700'}`}>
                       <div
                         className={`p-4 cursor-pointer flex justify-between items-center transition-colors ${isOverdueGroup ? 'bg-red-950/20 hover:bg-red-900/30' : 'bg-slate-700/60 hover:bg-slate-700'}`}
                         onClick={() => setExpandedDates(prev => ({ ...prev, [dateKey]: !prev[dateKey] }))}
@@ -901,8 +1041,16 @@ export default function TodoApp() {
                     <div 
                       key={iso} 
                       onClick={() => { 
-                        setExpandedDates(prev => ({ ...prev, [iso]: true })); 
-                        setActiveTab("tasks"); 
+                        if (isToday) {
+                            setActiveTab("today");
+                        } else {
+                            setExpandedDates({ [iso]: true }); 
+                            setActiveTab("all_tasks"); 
+                            
+                            setTimeout(() => {
+                                document.getElementById(`date-group-${iso}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }, 100);
+                        }
                       }} 
                       className={`p-1 sm:p-3 min-h-[60px] md:min-h-[80px] flex flex-col rounded-lg sm:rounded-xl cursor-pointer ${bg} hover:opacity-80 transition-all ${isToday ? 'ring-2 sm:ring-4 ring-blue-500 ring-offset-2 sm:ring-offset-4 ring-offset-slate-800 shadow-xl sm:shadow-2xl scale-[1.05] z-10' : 'shadow-md border border-white/5'}`}
                     >
@@ -954,7 +1102,6 @@ export default function TodoApp() {
                       </div>
                       <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                         {uniqueTasksForTag.map(t => {
-                          // FEATURE ADDITION: Format Frequency Label for summary view
                           const isRec = t.recurrence && t.recurrence.frequency !== 'none';
                           const freqLabel = isRec ? t.recurrence.frequency.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : '';
 
@@ -964,16 +1111,12 @@ export default function TodoApp() {
                                   <span className={`truncate ${t.completed ? 'line-through text-slate-400' : ''}`}>
                                     {t.title}
                                   </span>
-                                  
-                                  {/* FEATURE ADDITION: Replaced hardcoded t.date with recurrence logic */}
                                   <span className="text-xs text-slate-400 whitespace-nowrap group-open:hidden">
                                       {isRec ? `🔁 ${freqLabel}` : t.date}
                                   </span>
                               </summary>
                               
                               <div className="mt-3 text-sm text-slate-300 space-y-1 bg-slate-900/50 p-2 rounded border border-slate-700/50">
-                                
-                                {/* FEATURE ADDITION: Recurrence Specific Details View */}
                                 {isRec ? (
                                     <>
                                         <div className="flex justify-between items-center">
